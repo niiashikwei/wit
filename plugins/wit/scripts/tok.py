@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""token-optimizer hook runtime.
+"""Wit hook runtime.
 
-Privacy contract: everything stays on this machine under TOKEN_OPT_HOME. We record
+Privacy contract: everything stays on this machine under WIT_HOME. We record
 only counts, byte sizes, tool names, file extensions, coarse command families from an
 allowlist, and salted hashes of paths/sessions/projects. Never prompts, file contents,
-file paths, full commands, or tool outputs. TOKEN_METRICS=off disables recording.
+file paths, full commands, or tool outputs. WIT_METRICS=off disables recording.
 
 Usage: tok.py <session_start|pre_read|pre_bash|post_tool|pre_compact|session_end>
 Hooks must never break the session: every failure path exits 0 silently.
@@ -17,7 +17,7 @@ import subprocess
 import sys
 import time
 
-DATA = os.path.expanduser(os.environ.get("TOKEN_OPT_HOME", "~/.claude/token-optimizer"))
+DATA = os.path.expanduser(os.environ.get("WIT_HOME", "~/.claude/wit"))
 METRICS = os.path.join(DATA, "metrics.jsonl")
 TUNING = os.path.join(DATA, "tuning.json")
 STATE = os.path.join(DATA, "state")
@@ -93,7 +93,7 @@ def h(value):
 
 
 def log(event):
-    if os.environ.get("TOKEN_METRICS", "on").lower() == "off":
+    if os.environ.get("WIT_METRICS", "on").lower() == "off":
         return
     os.makedirs(DATA, exist_ok=True)
     event["ts"] = int(time.time())
@@ -138,7 +138,7 @@ def fmt_tokens(n):
 
 
 def guard_mode(t):
-    return os.environ.get("TOKEN_GUARD", t["read_guard"]["mode"]).lower()
+    return os.environ.get("WIT_GUARD", t["read_guard"]["mode"]).lower()
 
 
 def count_lines(path, cap=20 * 1024 * 1024):
@@ -172,7 +172,7 @@ def session_start(inp, t):
     proj = h(inp.get("cwd", os.getcwd()))
     log({"e": "start", "s": h(inp.get("session_id", "")), "p": proj, "src": inp.get("source", "")})
     lines = [
-        "Token etiquette (token-optimizer plugin):",
+        "Token etiquette (Wit plugin):",
         "- Grep/Glob before Read; read large files with offset/limit.",
         "- Delegate broad codebase searches to the `scout` subagent; delegate routine edits to `implementer`.",
         "- Keep tool output small: quiet/failures-only test flags, pipe long logs through tail.",
@@ -190,7 +190,7 @@ def session_start(inp, t):
     sv = t.get("savings") or {}
     msg = None
     if sv.get("last_30d"):
-        msg = (f"token-optimizer: saved ~{fmt_tokens(sv.get('last_session', 0))} tokens last session, "
+        msg = (f"Wit: saved ~{fmt_tokens(sv.get('last_session', 0))} tokens last session, "
                f"~{fmt_tokens(sv['last_30d'])} over the last 30 days ({sv.get('sessions', 0)} sessions).")
     emit("SessionStart", system_message=msg, additionalContext="\n".join(lines))
 

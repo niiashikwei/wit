@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 
-ROOT = os.path.join(os.path.dirname(__file__), "..", "plugins", "token-optimizer")
+ROOT = os.path.join(os.path.dirname(__file__), "..", "plugins", "wit")
 TOK = os.path.join(ROOT, "scripts", "tok.py")
 TUNER = os.path.join(ROOT, "scripts", "tuner.py")
 AUDIT = os.path.join(ROOT, "skills", "token-audit", "scripts", "audit.py")
@@ -18,8 +18,8 @@ class PluginTest(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.mkdtemp()
         self.work = tempfile.mkdtemp()
-        self.env = {**os.environ, "TOKEN_OPT_HOME": self.home}
-        self.env.pop("TOKEN_GUARD", None)
+        self.env = {**os.environ, "WIT_HOME": self.home}
+        self.env.pop("WIT_GUARD", None)
         self.big = os.path.join(self.work, "secret_customer_file.py")
         with open(self.big, "w") as f:
             f.write("x = 1  # some padding text here\n" * 3000)
@@ -56,14 +56,14 @@ class PluginTest(unittest.TestCase):
         self.assertIn("3000 lines", out["additionalContext"])
 
     def test_nudge_denies_once_then_allows(self):
-        self.env["TOKEN_GUARD"] = "nudge"
+        self.env["WIT_GUARD"] = "nudge"
         first = self.read(self.big)
         self.assertEqual(first["hookSpecificOutput"]["permissionDecision"], "deny")
         self.assertIsNone(self.read(self.big))  # escape hatch: never blocks twice
         self.assertIn('"d":"override"', self.metrics())
 
     def test_off_disables_guard(self):
-        self.assertIsNone(self.hook("pre_read", {"session_id": "s1", "tool_input": {"file_path": self.big}}, TOKEN_GUARD="off"))
+        self.assertIsNone(self.hook("pre_read", {"session_id": "s1", "tool_input": {"file_path": self.big}}, WIT_GUARD="off"))
 
     def test_privacy_no_paths_or_commands_recorded(self):
         self.read(self.big)
@@ -77,7 +77,7 @@ class PluginTest(unittest.TestCase):
         self.assertIn('"f":"other"', m)
 
     def test_metrics_off(self):
-        self.hook("post_tool", {"session_id": "s1", "tool_name": "Read", "tool_response": "x"}, TOKEN_METRICS="off")
+        self.hook("post_tool", {"session_id": "s1", "tool_name": "Read", "tool_response": "x"}, WIT_METRICS="off")
         self.assertFalse(os.path.exists(os.path.join(self.home, "metrics.jsonl")))
 
     def test_hook_latency(self):
@@ -103,7 +103,7 @@ class PluginTest(unittest.TestCase):
         self.assertIn("warn -> nudge", t["history"][-1]["change"])
 
     def test_tuner_loosens_when_overridden(self):
-        self.env["TOKEN_GUARD"] = "nudge"
+        self.env["WIT_GUARD"] = "nudge"
         with open(os.path.join(self.home, "tuning.json"), "w") as f:
             json.dump({"read_guard": {"mode": "nudge", "max_lines": 800}}, f)
         for i in range(10):
@@ -134,7 +134,7 @@ class PluginTest(unittest.TestCase):
         self.assertEqual((sess["turns"], sess["cr"], sess["out"]), (2, 200, 10))
 
     def test_accepted_nudge_counts_savings_and_is_shown(self):
-        self.env["TOKEN_GUARD"] = "nudge"
+        self.env["WIT_GUARD"] = "nudge"
         self.read(self.big)  # denied
         self.read(self.big, offset=10, limit=40)
         self.hook("post_tool", {"session_id": "s1", "tool_name": "Read",
@@ -151,7 +151,7 @@ class PluginTest(unittest.TestCase):
         self.assertIn("saved ~", out["systemMessage"])
 
     def test_overridden_nudge_counts_no_savings(self):
-        self.env["TOKEN_GUARD"] = "nudge"
+        self.env["WIT_GUARD"] = "nudge"
         self.read(self.big)
         self.read(self.big)
         self.hook("post_tool", {"session_id": "s1", "tool_name": "Read",

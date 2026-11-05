@@ -1,7 +1,7 @@
 {
-  "name": "token-optimizer",
+  "name": "wit",
   "version": "0.2.0",
   "description": "Self-tuning token optimization: privacy-safe local metrics, adaptive read/bash guards, cheap subagents, and audit skills.",
-  "author": { "name": "Liminal Arc" },
+  "author": { "name": "Nii (niiashikwei)", "url": "https://github.com/niiashikwei" },
   "keywords": ["tokens", "cost", "context", "optimization"]
 }

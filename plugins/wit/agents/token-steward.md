@@ -1,6 +1,6 @@
 ---
 name: token-steward
-description: Turns token-optimizer audit and metrics output into a prioritized, concrete set of fixes for a project (CLAUDE.md trimming, permission denies for generated files, MCP pruning, subagent model choices, API caching changes).
+description: Turns Wit audit and metrics output into a prioritized, concrete set of fixes for a project (CLAUDE.md trimming, permission denies for generated files, MCP pruning, subagent model choices, API caching changes).
 tools: Glob, Grep, Read, Bash
 model: sonnet
 ---

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Summarize the local, privacy-safe token-optimizer metrics (numbers only)."""
+"""Summarize the local, privacy-safe Wit metrics (numbers only)."""
 import json
 import os
 from collections import defaultdict
 
-DATA = os.path.expanduser(os.environ.get("TOKEN_OPT_HOME", "~/.claude/token-optimizer"))
+DATA = os.path.expanduser(os.environ.get("WIT_HOME", "~/.claude/wit"))
 
 
 def main():

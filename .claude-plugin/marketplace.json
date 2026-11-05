@@ -1,11 +1,11 @@
 {
-  "name": "token-optimizer-marketplace",
-  "owner": { "name": "Liminal Arc" },
+  "name": "wit",
+  "owner": { "name": "Nii (niiashikwei)", "url": "https://github.com/niiashikwei" },
   "metadata": { "description": "Token optimization tooling for Claude Code." },
   "plugins": [
     {
-      "name": "token-optimizer",
-      "source": "./plugins/token-optimizer",
+      "name": "wit",
+      "source": "./plugins/wit",
       "description": "Self-tuning token optimization for Claude Code: privacy-safe local metrics, adaptive guards, cheap subagents, and audit skills."
     }
   ]

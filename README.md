@@ -1,22 +1,24 @@
-# token-optimizer
+# Wit
 
-A Claude Code plugin that cuts token usage in any project without slowing delivery. It **measures privately, learns from every session, and tunes itself**.
+**Wit** is a Claude Code plugin that cuts token usage in any project without slowing delivery. It **measures privately, learns from every session, tunes itself**, and tells you how many tokens it saved.
+
+Requires Claude Code and Python 3 (standard library only).
 
 ## Install (once, works in every project)
 
 ```bash
-claude plugin marketplace add ~/projects/token-optimizer
+claude plugin marketplace add niiashikwei/wit
 ```
 
 ```bash
-claude plugin install token-optimizer@token-optimizer-marketplace
+claude plugin install wit@wit
 ```
 
-For teams, push this repo to git and use `claude plugin marketplace add <org>/token-optimizer`. You can also list it in a project's `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`) so everyone gets it automatically.
+Restart Claude Code afterwards. For a team, you can add the marketplace and plugin to a project's `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`) so everyone who opens the project is offered it.
 
-Optional statusline (model · context % · cache hit % · cost), in `~/.claude/settings.json`:
+Optional statusline (model · context % · cache hit % · tokens saved · cost): clone this repo, then add to `~/.claude/settings.json`:
 ```json
-"statusLine": { "type": "command", "command": "python3 ~/projects/token-optimizer/plugins/token-optimizer/scripts/statusline.py" }
+"statusLine": { "type": "command", "command": "python3 /path/to/wit/plugins/wit/scripts/statusline.py" }
 ```
 
 ## What's inside
@@ -42,12 +44,12 @@ At the end of each session the tuner looks at the last 14 days of metrics and:
 - **Bash:** learns which command families average more than 20KB of output and hints only for those.
 - **Tips:** top token sink, heavy MCP tools, low cache-hit rate, Opus-heavy output, frequent compaction.
 
-Every change is logged with its reason in `~/.claude/token-optimizer/tuning.json` → `history`. Preview the next pass with `python3 plugins/token-optimizer/scripts/tuner.py --dry-run`.
+Every change is logged with its reason in `~/.claude/wit/tuning.json` → `history`. Preview the next pass with `python3 plugins/wit/scripts/tuner.py --dry-run`.
 
 ## Tokens saved
 
 The plugin shows its savings in three places:
-- **Each new session:** a one-line message, e.g. `token-optimizer: saved ~12.4k tokens last session, ~210.0k over the last 30 days (14 sessions).`
+- **Each new session:** a one-line message, e.g. `Wit: saved ~12.4k tokens last session, ~210.0k over the last 30 days (14 sessions).`
 - **Live in the statusline:** `… · saved ~4.2k · …` (needs the statusline setting above).
 - **`/token-audit`:** totals broken down by source, plus how much work was offloaded to subagents.
 
@@ -59,7 +61,7 @@ These are **conservative estimates** (~4 bytes/token, each counted once). In rea
 
 ## Privacy
 
-- Metrics are **local only** (`~/.claude/token-optimizer/`) and nothing is sent over the network.
+- Metrics are **local only** (`~/.claude/wit/`) and nothing is sent over the network.
 - What's recorded: counts, byte sizes, token totals, tool names, file extensions, and command families from a fixed allowlist (`pytest`, `npm test`… anything else is `other`).
 - Paths, sessions and projects are stored as **salted hashes**. The salt is random per machine, so hashes can't be matched elsewhere.
 - **Never recorded:** prompts, file contents, paths, full commands, tool outputs. This is checked by `tests/test_plugin.py::test_privacy_no_paths_or_commands_recorded`.
@@ -68,13 +70,21 @@ These are **conservative estimates** (~4 bytes/token, each counted once). In rea
 
 | Setting | Effect |
 |---|---|
-| `TOKEN_GUARD=off\|warn\|nudge` (env) | Override the guard mode for a shell |
-| `TOKEN_METRICS=off` (env) | Record nothing |
+| `WIT_GUARD=off\|warn\|nudge` (env) | Override the guard mode for a shell |
+| `WIT_METRICS=off` (env) | Record nothing |
 | `"pinned": true` in `tuning.json` | Freeze auto-tuning; the tuner only proposes |
-| `rm -rf ~/.claude/token-optimizer` | Forget everything |
+| `rm -rf ~/.claude/wit` | Forget everything |
 
 ## Tests
 
 ```bash
 python3 -m unittest tests/test_plugin.py
 ```
+
+## Contributing
+
+Issues and PRs welcome. Run the tests before opening a PR, and keep the privacy contract intact: new metrics may record numbers, tool names and salted hashes only.
+
+## License
+
+[MIT](LICENSE)
