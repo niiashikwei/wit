@@ -81,6 +81,38 @@ These are **conservative estimates** (~4 bytes/token, each counted once). In rea
 python3 -m unittest tests/test_plugin.py
 ```
 
+## Testing
+
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R22). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+
+| Suite | Covers |
+|---|---|
+| `test_guards.py` | Session brief, read guard, nudge escape hatch, guard modes, bash hints (R1–R5) |
+| `test_privacy.py` | No paths/contents/commands/prompts recorded, salted hashes, opt-out, no network imports (R6–R8) |
+| `test_tuner.py` | Self-tuning rules and bounds, history, pinning, dry-run, transcript summary, learned tips, storage limits (R9–R12, R18, R22) |
+| `test_savings.py` | Savings accounting and display, report, audit (R13–R16) |
+| `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
+| `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
+| `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter (R21) |
+| `test_traceability.py` | Every requirement has a test |
+
+Tests run the scripts exactly as Claude Code does (a fresh process with JSON on stdin) against an isolated data directory.
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+```bash
+python3 tests/traceability.py
+```
+
+Coverage (needs `pip install coverage`; CI fails under 90%):
+```bash
+WIT_COVERAGE=1 python3 -m unittest discover -s tests && python3 -m coverage combine && python3 -m coverage report
+```
+
+Measured on an Apple Silicon Mac: every hook p95 ≤ ~55 ms (p50 ~30 ms, mostly Python startup); about 100 ms when session start has a full 20k-event history; 35 ms to guard a 50 MB file; the tuner takes ~110 ms over a full 20k-line metrics file. CI runs on Linux and macOS with Python 3.10–3.13.
+
 ## Contributing
 
 Issues and PRs welcome. Run the tests before opening a PR, and keep the privacy contract intact: new metrics may record numbers, tool names and salted hashes only.

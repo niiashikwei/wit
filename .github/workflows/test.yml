@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.10", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Shared CI runners are noisier than dev machines; the local budget is 150 ms.
+      WIT_PERF_BUDGET_MS: "250"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Requirements, behavior and performance tests
+        run: python -m unittest discover -s tests -v
+      - name: Traceability matrix
+        run: python tests/traceability.py
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install coverage
+      - name: Tests under coverage (subprocess-level)
+        run: WIT_COVERAGE=1 python -m unittest discover -s tests
+      - name: Coverage report (fails under 90%)
+        run: |
+          python -m coverage combine
+          python -m coverage report
