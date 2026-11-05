@@ -101,9 +101,40 @@ def log(event):
         f.write(json.dumps(event, separators=(",", ":")) + "\n")
 
 
-def emit(event_name, **fields):
+def emit(event_name, system_message=None, **fields):
     out = {"hookSpecificOutput": {"hookEventName": event_name, **fields}}
+    if system_message:
+        out["systemMessage"] = system_message  # shown to the user, not the model
     sys.stdout.write(json.dumps(out))
+
+
+# Per-session state: pending nudges/hints awaiting an outcome, plus the running
+# savings total the statusline displays.
+def load_state(sid):
+    s = _read_json(os.path.join(STATE, sid + ".json"), {})
+    s.setdefault("denied", {})     # path hash -> estimated tokens of the full read
+    s.setdefault("bash_warn", {})  # family -> learned average output bytes
+    s.setdefault("saved", 0)
+    return s
+
+
+def save_state(sid, s):
+    os.makedirs(STATE, exist_ok=True)
+    with open(os.path.join(STATE, sid + ".json"), "w") as f:
+        json.dump(s, f)
+
+
+def record_saving(sid, s, kind, tokens):
+    """Savings are estimates (~4 bytes/token) counted once, so they're a lower
+    bound: avoided output would otherwise be re-sent on every later turn."""
+    if tokens <= 0:
+        return
+    s["saved"] += tokens
+    log({"e": "saved", "s": sid, "k": kind, "tok": tokens})
+
+
+def fmt_tokens(n):
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
 def guard_mode(t):
@@ -156,7 +187,12 @@ def session_start(inp, t):
         pass
     for tip in t.get("tips", [])[:3]:
         lines.append(f"- Learned: {tip}")
-    emit("SessionStart", additionalContext="\n".join(lines))
+    sv = t.get("savings") or {}
+    msg = None
+    if sv.get("last_30d"):
+        msg = (f"token-optimizer: saved ~{fmt_tokens(sv.get('last_session', 0))} tokens last session, "
+               f"~{fmt_tokens(sv['last_30d'])} over the last 30 days ({sv.get('sessions', 0)} sessions).")
+    emit("SessionStart", system_message=msg, additionalContext="\n".join(lines))
 
 
 def pre_read(inp, t):
@@ -185,16 +221,16 @@ def pre_read(inp, t):
     msg = (f"This file has {lines} lines (guard threshold {max_lines}). Prefer Grep to locate the "
            f"relevant section, then Read with offset/limit.")
     if mode == "nudge":
-        os.makedirs(STATE, exist_ok=True)
-        state_file = os.path.join(STATE, sid + ".json")
-        denied = _read_json(state_file, [])
-        if ph in denied:
+        s = load_state(sid)
+        if ph in s["denied"] or ph in s.get("overridden", []):
             # Escape hatch: a second full read of the same file is always allowed.
+            s["denied"].pop(ph, None)
+            s.setdefault("overridden", []).append(ph)
+            save_state(sid, s)
             log({"e": "guard", "s": sid, "ph": ph, "r": "read", "d": "override", "lines": lines})
             return
-        denied.append(ph)
-        with open(state_file, "w") as f:
-            json.dump(denied, f)
+        s["denied"][ph] = size // 4
+        save_state(sid, s)
         log({"e": "guard", "s": sid, "ph": ph, "r": "read", "d": "deny", "lines": lines})
         emit("PreToolUse", permissionDecision="deny",
              permissionDecisionReason=msg + " If you truly need the whole file, request the same Read again and it will be allowed.")
@@ -208,7 +244,11 @@ def pre_bash(inp, t):
     fam = command_family(cmd)
     noisy = t["bash"]["noisy_families"]
     if fam in noisy and "| tail" not in cmd and "| head" not in cmd and " -q" not in cmd:
-        log({"e": "guard", "s": h(inp.get("session_id", "")), "r": "bash", "f": fam, "d": "warn"})
+        sid = h(inp.get("session_id", ""))
+        s = load_state(sid)
+        s["bash_warn"][fam] = noisy[fam]
+        save_state(sid, s)
+        log({"e": "guard", "s": sid, "r": "bash", "f": fam, "d": "warn"})
         emit("PreToolUse", additionalContext=(
             f"`{fam}` output has averaged ~{noisy[fam] // 1000}KB here. Prefer quiet or failures-only flags, "
             "or pipe through `| tail -n 60`, unless you need the full output."))
@@ -221,12 +261,27 @@ def post_tool(inp, t):
         size = len(json.dumps(resp)) if not isinstance(resp, str) else len(resp)
     except Exception:
         size = 0
-    ev = {"e": "tool", "s": h(inp.get("session_id", "")), "t": name, "b": size}
+    sid = h(inp.get("session_id", ""))
+    ev = {"e": "tool", "s": sid, "t": name, "b": size}
     ti = inp.get("tool_input", {}) or {}
+    s = None
     if name == "Bash":
         ev["f"] = command_family(ti.get("command", ""))
+        s = load_state(sid)
+        avg = s["bash_warn"].pop(ev["f"], None)
+        if avg is not None:  # first run of a hinted family: compare to its usual size
+            record_saving(sid, s, "bash", (avg - size) // 4)
     elif name == "Read" and ti.get("file_path"):
         ev["ph"] = h(ti["file_path"])
+        s = load_state(sid)
+        full = s["denied"].pop(ev["ph"], None)
+        if full is not None and (ti.get("limit") or ti.get("offset")):
+            record_saving(sid, s, "read", full - size // 4)
+    elif name in ("Agent", "Task") and str(ti.get("subagent_type", "")).endswith(("scout", "implementer")):
+        # Not a token saving, but work kept out of the main (pricier) context.
+        log({"e": "offload", "s": sid, "a": ti["subagent_type"].split(":")[-1], "b": size})
+    if s is not None:
+        save_state(sid, s)
     log(ev)
 
 

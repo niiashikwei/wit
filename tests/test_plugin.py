@@ -133,6 +133,39 @@ class PluginTest(unittest.TestCase):
         sess = [json.loads(l) for l in self.metrics().splitlines() if '"e":"session"' in l][0]
         self.assertEqual((sess["turns"], sess["cr"], sess["out"]), (2, 200, 10))
 
+    def test_accepted_nudge_counts_savings_and_is_shown(self):
+        self.env["TOKEN_GUARD"] = "nudge"
+        self.read(self.big)  # denied
+        self.read(self.big, offset=10, limit=40)
+        self.hook("post_tool", {"session_id": "s1", "tool_name": "Read",
+                                "tool_input": {"file_path": self.big, "offset": 10, "limit": 40},
+                                "tool_response": "y" * 2000})
+        full = os.path.getsize(self.big) // 4
+        self.assertIn(f'"tok":{full - 500}', self.metrics())
+        r = subprocess.run([sys.executable, "-S", os.path.join(ROOT, "scripts", "statusline.py")],
+                           input=json.dumps({"session_id": "s1", "model": {"display_name": "Opus"}}),
+                           capture_output=True, text=True, env=self.env)
+        self.assertIn("saved ~", r.stdout)
+        self.run_tuner()
+        out = self.hook("session_start", {"session_id": "s2", "cwd": self.work})
+        self.assertIn("saved ~", out["systemMessage"])
+
+    def test_overridden_nudge_counts_no_savings(self):
+        self.env["TOKEN_GUARD"] = "nudge"
+        self.read(self.big)
+        self.read(self.big)
+        self.hook("post_tool", {"session_id": "s1", "tool_name": "Read",
+                                "tool_input": {"file_path": self.big}, "tool_response": "y" * 90000})
+        self.assertNotIn('"e":"saved"', self.metrics())
+
+    def test_heeded_bash_hint_counts_savings(self):
+        with open(os.path.join(self.home, "tuning.json"), "w") as f:
+            json.dump({"bash": {"noisy_families": {"pytest": 40000}}}, f)
+        self.hook("pre_bash", {"session_id": "s1", "tool_input": {"command": "pytest tests"}})
+        self.hook("post_tool", {"session_id": "s1", "tool_name": "Bash", "tool_input": {"command": "pytest -q tests"},
+                                "tool_response": {"stdout": "." * 4000}})
+        self.assertIn('"k":"bash"', self.metrics())
+
     def test_audit_and_report_run(self):
         with open(os.path.join(self.work, "CLAUDE.md"), "w") as f:
             f.write("rule\n" * 4000)

@@ -44,6 +44,19 @@ At the end of each session the tuner looks at the last 14 days of metrics and:
 
 Every change is logged with its reason in `~/.claude/token-optimizer/tuning.json` → `history`. Preview the next pass with `python3 plugins/token-optimizer/scripts/tuner.py --dry-run`.
 
+## Tokens saved
+
+The plugin shows its savings in three places:
+- **Each new session:** a one-line message, e.g. `token-optimizer: saved ~12.4k tokens last session, ~210.0k over the last 30 days (14 sessions).`
+- **Live in the statusline:** `… · saved ~4.2k · …` (needs the statusline setting above).
+- **`/token-audit`:** totals broken down by source, plus how much work was offloaded to subagents.
+
+What counts as a saving:
+- A **nudged large read** that was followed by a ranged read: full file size minus what was actually read. Overridden nudges count 0.
+- A **bash hint** that was heeded: the family's learned average output minus the actual output.
+
+These are **conservative estimates** (~4 bytes/token, each counted once). In reality, avoided output would also have been re-sent on every later turn. Warn-only hints and subagent delegation aren't counted as savings: subagent work is reported separately, because it moves tokens to cheaper models rather than removing them.
+
 ## Privacy
 
 - Metrics are **local only** (`~/.claude/token-optimizer/`) and nothing is sent over the network.

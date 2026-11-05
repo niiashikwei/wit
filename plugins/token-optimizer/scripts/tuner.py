@@ -122,9 +122,36 @@ def retune(t, events):
         change("bash.noisy_families", sorted(t["bash"]["noisy_families"]), sorted(noisy), "observed output sizes")
     t["bash"]["noisy_families"] = noisy
 
-    # --- learned tips
+    # --- learned tips and savings summary
     t["tips"] = build_tips(events)
+    t["savings"] = summarize_savings(t.get("savings") or {})
     return changes
+
+
+def summarize_savings(prev):
+    """30-day totals plus the most recent finished session (by last saving event)."""
+    try:
+        with open(tok.METRICS) as f:
+            lines = f.readlines()
+    except OSError:
+        return prev
+    cutoff = time.time() - 30 * 86400
+    per_session, order = defaultdict(int), []
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("e") == "saved" and ev.get("ts", 0) >= cutoff:
+            if ev["s"] not in per_session:
+                order.append(ev["s"])
+            per_session[ev["s"]] += ev.get("tok", 0)
+    sessions = {json.loads(l).get("s") for l in lines if '"e":"session"' in l}
+    return {
+        "last_session": per_session[order[-1]] if order else 0,
+        "last_30d": sum(per_session.values()),
+        "sessions": max(len(sessions), len(per_session)),
+    }
 
 
 def build_tips(events):
@@ -189,7 +216,11 @@ def main():
     t = tok.load_tuning()
     changes = retune(t, load_events())
     if a.dry_run or t.get("pinned"):
-        print(json.dumps({"proposed": changes, "tips": t["tips"]}, indent=2))
+        if not a.dry_run:  # pinned freezes tuning, but savings reporting stays current
+            frozen = tok.load_tuning()
+            frozen["savings"] = t["savings"]
+            tok.save_tuning(frozen)
+        print(json.dumps({"proposed": changes, "tips": t["tips"], "savings": t["savings"]}, indent=2))
         return
     t["history"] = (t.get("history", []) + changes)[-50:]
     t["last_tuned"] = int(time.time())

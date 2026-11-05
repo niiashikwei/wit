@@ -1,6 +1,6 @@
 {
   "name": "token-optimizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-tuning token optimization: privacy-safe local metrics, adaptive read/bash guards, cheap subagents, and audit skills.",
   "author": { "name": "Liminal Arc" },
   "keywords": ["tokens", "cost", "context", "optimization"]

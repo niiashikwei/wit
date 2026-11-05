@@ -41,8 +41,17 @@ def main():
         if e.get("e") == "guard":
             guards[f'{e.get("r")}:{e.get("d")}'] += 1
 
+    saved = defaultdict(int)
+    for e in events:
+        if e.get("e") == "saved":
+            saved[e.get("k")] += e.get("tok", 0)
+    offloaded = [e for e in events if e.get("e") == "offload"]
+
     report = {
         "sessions": len(sessions),
+        "tokens_saved_estimate": {"total": sum(saved.values()), "by_kind": dict(saved),
+                                  "note": "lower bound; ~4 bytes/token; counted once though avoided output would be re-sent each later turn"},
+        "subagent_offloads": {"calls": len(offloaded), "result_kb_returned": sum(e.get("b", 0) for e in offloaded) // 1000},
         "tokens": dict(tot),
         "cache_hit_rate": round(tot["cr"] / prompt, 3) if prompt else None,
         "top_tool_outputs_kb": {k: v // 1000 for k, v in sorted(tool_bytes.items(), key=lambda kv: -kv[1])[:8]},

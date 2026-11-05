@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Statusline: model · context used · cache hit · session cost. Reads only usage numbers."""
+"""Statusline: model · context used · cache hit · tokens saved · session cost. Reads only usage numbers."""
 import json
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tok  # noqa: E402
 
 
 def main():
@@ -28,6 +32,12 @@ def main():
         parts.append(f"ctx {ctx * 100 // window}%")
         if ctx:
             parts.append(f"cache {cr * 100 // ctx}%")
+    try:
+        saved = tok.load_state(tok.h(inp.get("session_id", "")))["saved"]
+        if saved:
+            parts.append(f"saved ~{tok.fmt_tokens(saved)}")
+    except Exception:
+        pass
     cost = (inp.get("cost") or {}).get("total_cost_usd")
     if cost is not None:
         parts.append(f"${cost:.2f}")
