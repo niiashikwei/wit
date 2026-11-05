@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" session_start", "timeout": 5 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Read", "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" pre_read", "timeout": 5 } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" pre_bash", "timeout": 5 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" post_tool", "timeout": 5, "async": true } ] }
+    ],
+    "PreCompact": [
+      { "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" pre_compact", "timeout": 5, "async": true } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/tok.py\" session_end", "timeout": 10 } ] }
+    ]
+  }
+}

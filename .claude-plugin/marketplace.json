@@ -1,0 +1,12 @@
+{
+  "name": "token-optimizer-marketplace",
+  "owner": { "name": "Liminal Arc" },
+  "metadata": { "description": "Token optimization tooling for Claude Code." },
+  "plugins": [
+    {
+      "name": "token-optimizer",
+      "source": "./plugins/token-optimizer",
+      "description": "Self-tuning token optimization for Claude Code: privacy-safe local metrics, adaptive guards, cheap subagents, and audit skills."
+    }
+  ]
+}
