@@ -1,7 +1,7 @@
 {
   "name": "wit",
-  "version": "0.2.0",
-  "description": "Self-tuning token optimization: privacy-safe local metrics, adaptive read/bash guards, cheap subagents, and audit skills.",
+  "version": "0.3.0",
+  "description": "Self-tuning token optimization (privacy-safe local metrics, adaptive read/bash guards, cheap subagents, audit skills) and Morpheus, a live local dashboard of your hooks, skills, agents and tokens with ranked improvements.",
   "author": { "name": "Nii (niiashikwei)", "url": "https://github.com/niiashikwei" },
-  "keywords": ["tokens", "cost", "context", "optimization"]
+  "keywords": ["tokens", "cost", "context", "optimization", "observability", "dashboard", "hooks", "skills", "agents"]
 }

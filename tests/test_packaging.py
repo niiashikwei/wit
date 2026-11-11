@@ -67,5 +67,25 @@ class PackagingTest(unittest.TestCase):
             self.assertIn("description", frontmatter(p))
 
 
+class MorpheusPackagingTest(unittest.TestCase):
+    @req("R34")
+    def test_mcp_server_dashboard_and_commands_point_at_shipped_files(self):
+        with open(os.path.join(PLUGIN, ".mcp.json")) as f:
+            server = json.load(f)["mcpServers"]["morpheus"]
+        self.assertEqual(server["command"], "node")
+        self.assertEqual(server["args"][1], "mcp")
+        script = server["args"][0].replace("${CLAUDE_PLUGIN_ROOT}", PLUGIN)
+        self.assertTrue(os.path.isfile(script), script)
+        morpheus = os.path.join(PLUGIN, "morpheus")
+        self.assertTrue(os.path.isfile(os.path.join(morpheus, "web", "dashboard.html")))
+        self.assertTrue(os.path.isfile(os.path.join(morpheus, "hooks", "morpheus-time.sh")))
+        built = {f[:-3] for f in os.listdir(os.path.join(morpheus, "dist"))}
+        sources = {f[:-3] for f in os.listdir(os.path.join(morpheus, "src")) if f.endswith(".ts")}
+        self.assertEqual(built, sources, "dist/ has one built file per source")
+        for name in ("dashboard.md", "process-report.md"):
+            with open(os.path.join(PLUGIN, "commands", name)) as f:
+                self.assertIn("${CLAUDE_PLUGIN_ROOT}/morpheus/dist/cli.js", f.read())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,960 @@
+<!doctype html><html lang="en"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box}*,*::before,*::after{box-sizing:inherit}body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>Morpheus</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Morpheus: tokens (colours, type) for light and dark, and the base layout. */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --ink:#18212b; --muted:#5b6672; --line:#d9dedf;
+  --hook:#b4690e; --hook-bg:#fbf0e1;
+  --skill:#0f766e; --skill-bg:#e3f4f1;
+  --agent:#6d3fc0; --agent-bg:#efe8fb;
+  --code:#475569; --code-bg:#eceff3;
+  --new:#d9480f; --new-bg:#fff1ea;
+  --ok:#2f7d32; --ok-bg:#e6f3e6; --part:#a36500; --part-bg:#fdf1d8; --miss:#b42318; --miss-bg:#fde7e4;
+  --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body:"Public Sans", "Helvetica Neue", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --surface:#1a2129; --ink:#e7ecef; --muted:#9aa6b2; --line:#2c3640;
+  --hook:#f0a24a; --hook-bg:#33261a; --skill:#4fd1c0; --skill-bg:#16302d;
+  --agent:#b394f5; --agent-bg:#2a2140; --code:#a9b6c6; --code-bg:#232c36;
+  --new:#ff8a5c; --new-bg:#3a2219;
+  --ok:#7fcf83; --ok-bg:#1d3320; --part:#f2c165; --part-bg:#3a2f17; --miss:#ff8b80; --miss-bg:#3d1f1c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --surface:#1a2129; --ink:#e7ecef; --muted:#9aa6b2; --line:#2c3640;
+  --hook:#f0a24a; --hook-bg:#33261a; --skill:#4fd1c0; --skill-bg:#16302d;
+  --agent:#b394f5; --agent-bg:#2a2140; --code:#a9b6c6; --code-bg:#232c36;
+  --new:#ff8a5c; --new-bg:#3a2219;
+  --ok:#7fcf83; --ok-bg:#1d3320; --part:#f2c165; --part-bg:#3a2f17; --miss:#ff8b80; --miss-bg:#3d1f1c; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,46px);font-weight:750;letter-spacing:-.02em}
+h2{font-size:26px;font-weight:750;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:600}
+p{margin:0;max-width:68ch}
+code,.mono{font-family:var(--mono);font-size:.86em}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:18px}
+.lede{font-size:17.5px;color:var(--ink)}
+.meta{color:var(--muted);font-size:14px}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:600 14px var(--body);padding:8px 16px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.seg button:focus-visible{outline:2px solid var(--new);outline-offset:-2px}
+.note{font-size:13.5px;color:var(--muted)}
+
+
+.tag{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;font-weight:600}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:680px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+</style>
+
+<style>
+/* The dashboard: a control bar, the next improvements, what is running, numbers, tables, a drill-down drawer. */
+:root{ --ink-2:#2b3642; --run:#1d6fd8; --run-bg:#e4effc; --shadow:0 10px 30px rgba(24,33,43,.16) }
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){ --ink-2:#c9d2da; --run:#7fb0ff; --run-bg:#1b2a40; --shadow:0 10px 30px rgba(0,0,0,.45) }}
+:root[data-theme="dark"]{ --ink-2:#c9d2da; --run:#7fb0ff; --run-bg:#1b2a40; --shadow:0 10px 30px rgba(0,0,0,.45) }
+
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+.tabs-in{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:4px;align-items:flex-end}
+.tabs a{font:600 14.5px var(--body);color:var(--muted);text-decoration:none;padding:14px 14px 12px;border-bottom:2.5px solid transparent;display:flex;gap:8px;align-items:center}
+.tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tabs a:focus-visible{outline:2px solid var(--new);outline-offset:-2px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.ping{animation:ping .8s ease-out 1}
+@keyframes ping{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 70%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+.proj{margin-left:auto;display:flex;gap:8px;align-items:center;font:500 13px var(--body);color:var(--muted);padding:8px 0;min-width:0}
+.proj select{font:13px var(--body);padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);max-width:min(60vw,360px)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.dot.on{animation:none}}
+
+.live{gap:40px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.bar .seg button{padding:7px 12px;font-size:13.5px}
+.scope{display:flex;flex-wrap:wrap;gap:8px}
+.scope button{font:500 13px var(--mono);background:var(--code-bg);color:var(--ink);border:0;border-radius:999px;padding:5px 10px;cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scope button::after{content:"  ×";color:var(--muted)}
+.btn{font:600 13.5px var(--body);padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--ink-2)} .btn:focus-visible{outline:2px solid var(--new);outline-offset:2px}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--muted);padding-inline:8px}
+.stamp{font:12.5px var(--mono);color:var(--muted)}
+.stamp.stale{color:var(--part)}
+
+.notice{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px}
+.notice h3{font-size:17px}
+.notice ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;max-width:70ch}
+.err{font-size:13.5px;color:var(--miss);background:var(--miss-bg);border-radius:8px;padding:8px 12px}
+
+/* next improvements */
+.next{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:n}
+.next li{counter-increment:n;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:4px 14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;align-items:start}
+.next li::before{content:counter(n);grid-row:span 4;font:750 26px var(--display);color:var(--new);line-height:1}
+.next h3{font-size:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.next .roi{grid-column:3;grid-row:1;text-align:right;font:600 12px var(--mono);color:var(--muted)}
+.next .roi b{display:block;font:750 22px var(--display);color:var(--ink);font-variant-numeric:tabular-nums}
+.next p{grid-column:2/4;font-size:14px;min-width:0}
+.next .ev{color:var(--muted)}
+.next .acts{grid-column:2/4;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.next .why{grid-column:2/4;font-size:14px;background:var(--bg);border-radius:8px;padding:10px 12px;white-space:pre-wrap}
+.meta-row{font:12px var(--mono);color:var(--muted)}
+
+/* now */
+.now{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px}
+@media (max-width:820px){.now{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h3{font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.sess{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.sess .who{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sess .prompt{font-size:13.5px;color:var(--ink-2);overflow-wrap:anywhere}
+.doing{font:12.5px var(--mono);color:var(--run);background:var(--run-bg);border-radius:6px;padding:5px 8px;overflow-wrap:anywhere}
+.link{font:500 12.5px var(--mono);color:var(--ink);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.link:hover{text-decoration-color:var(--ink)}
+.feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:460px;overflow:auto}
+.feed li{display:grid;grid-template-columns:62px 64px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.feed li:hover{background:var(--bg)}
+.feed time,.feed .ms{font:12px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.feed .what{min-width:0;overflow:hidden}
+.feed .what b{font-weight:600}
+.feed .what small{display:block;color:var(--muted);font:12px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k{font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 6px;border-radius:5px;text-align:center}
+.k-hook{background:var(--hook-bg);color:var(--hook)} .k-skill{background:var(--skill-bg);color:var(--skill)}
+.k-agent{background:var(--agent-bg);color:var(--agent)} .k-hint{background:var(--code-bg);color:var(--code)}
+.o{font:600 11px var(--mono);padding:2px 6px;border-radius:5px;white-space:nowrap}
+.o-ok{background:var(--ok-bg);color:var(--ok)} .o-block,.o-error,.o-cancelled{background:var(--miss-bg);color:var(--miss)}
+.o-warn,.o-override,.o-timeout,.o-red{background:var(--part-bg);color:var(--part)} .o-running{background:var(--run-bg);color:var(--run)}
+
+/* numbers */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.kpi{background:var(--surface);padding:14px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.kpi b{font:750 26px var(--display);font-variant-numeric:tabular-nums;color:var(--ink)}
+.kpi span{font-size:13px;color:var(--muted)}
+.kpi small{font:12px var(--mono);color:var(--muted)}
+.kpi.bad b{color:var(--miss)} .kpi.warn b{color:var(--part)} .kpi.good b{color:var(--ok)}
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;overflow-x:auto}
+.chart svg{display:block;min-width:520px;width:100%;height:auto}
+.chart text{fill:var(--muted);font:11px var(--mono)}
+.legend2{display:flex;gap:14px;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.legend2 i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+/* tables */
+.ttabs{display:flex;flex-wrap:wrap;gap:6px}
+.ttabs button{font:600 13.5px var(--body);padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.ttabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.ltbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.ltbl table{min-width:720px}
+.ltbl th button{all:unset;cursor:pointer}
+.ltbl th button:focus-visible{outline:2px solid var(--new)}
+.ltbl th[aria-sort] button::after{content:" ↓"} .ltbl th[aria-sort="ascending"] button::after{content:" ↑"}
+.ltbl td.num,.ltbl th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:13px}
+.ltbl tbody tr{cursor:pointer} .ltbl tbody tr:hover td{background:var(--bg)}
+.mix{display:flex;height:8px;border-radius:4px;overflow:hidden;min-width:80px;background:var(--code-bg)}
+.mix i{display:block;height:100%}
+.over{color:var(--miss);font-weight:600}
+
+/* timeline */
+.tl-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.tl-bar select{font:13.5px var(--body);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);max-width:100%}
+.tl{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;overflow-x:auto}
+.tl svg{display:block;min-width:640px;width:100%;height:auto}
+.tl text{fill:var(--muted);font:11px var(--mono)}
+.tl .lane-l{fill:var(--ink);font:600 12px var(--body)}
+.tl rect.ev{cursor:pointer}
+.tl rect.ev:focus-visible{outline:none;stroke:var(--ink);stroke-width:2}
+.tl .f-hook{fill:var(--hook)} .tl .f-skill{fill:var(--skill)} .tl .f-agent{fill:var(--agent)} .tl .f-hint{fill:var(--code)}
+.tl .f-bad{fill:var(--miss)} .tl .f-warn{fill:var(--part)}
+.tl-tip{font-size:13px;color:var(--muted);min-height:2.6em}
+.tl-tip b{color:var(--ink)}
+.seq{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:2px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.seq li{display:grid;grid-template-columns:70px 56px minmax(0,1fr) auto;gap:8px;padding:5px 10px;align-items:baseline;font-size:13px;cursor:pointer}
+.seq li:hover{background:var(--bg)}
+.seq li time{font:12px var(--mono);color:var(--muted)}
+.seq .what{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:560px){.seq li{grid-template-columns:62px 50px minmax(0,1fr)} .seq li .o{display:none}}
+/* coverage */
+.cov-sum{display:flex;flex-wrap:wrap;gap:8px}
+.cov-sum button{font:600 13px var(--body);padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer}
+.cov-sum button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.s-active{background:var(--ok-bg);color:var(--ok)} .s-missed{background:var(--miss-bg);color:var(--miss)}
+.s-idle{background:var(--code-bg);color:var(--code)} .s-off{background:var(--part-bg);color:var(--part)}
+
+/* work vs orchestration */
+:root{ --work:var(--run); --orch:var(--hook); --talk:var(--code) }
+.tok-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:820px){.tok-grid{grid-template-columns:minmax(0,1fr)}}
+.tok-bars{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.tok-bars li{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tb-top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;align-items:baseline;min-width:0}
+.tbar{display:flex;height:12px;border-radius:3px;overflow:hidden;background:var(--code-bg);min-width:4px}
+.tbar i{display:block;height:100%;min-width:0}
+.tbar i.mine{opacity:1} .tbar i.theirs{opacity:.45}
+.f-work{background:var(--work)} .f-orch{background:var(--orch)} .f-talk{background:var(--talk)}
+.tok-est{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.tok-est li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font-size:13.5px;align-items:baseline}
+.tok-est li span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tok-est .stamp{font-variant-numeric:tabular-nums}
+.kpi .share{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--code-bg);margin-top:4px}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:color-mix(in srgb,var(--ink) 30%,transparent);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--surface);z-index:50;box-shadow:var(--shadow);display:flex;flex-direction:column;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(18px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) 18px;gap:14px;overflow:auto}
+.drawer header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.drawer h2{font-size:22px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stats div{background:var(--bg);border-radius:8px;padding:8px 10px}
+.stats b{display:block;font:700 18px var(--display);font-variant-numeric:tabular-nums}
+.stats span{font-size:12px;color:var(--muted)}
+.runs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.runs li{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:13px;min-width:0}
+.runs .top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:12px var(--mono);color:var(--muted)}
+.runs code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink-2);font-size:12.5px}
+.runs .said{color:var(--muted)}
+.sessrows{display:flex;flex-direction:column;gap:4px}
+.sessrows button{display:flex;justify-content:space-between;gap:10px;background:var(--bg);border:0;border-radius:6px;padding:6px 8px;cursor:pointer;font:12.5px var(--mono);color:var(--ink);text-align:left}
+.sessrows button span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<nav class="tabs" aria-label="Morpheus"><div class="tabs-in">
+  <a href="#live" id="tab-live" aria-current="page"><span class="dot" id="live-dot"></span>Morpheus</a>
+  <label class="proj">Project <select id="project" aria-label="Project to show"></select></label>
+</div></nav>
+
+<main class="wrap live" id="live">
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <div class="eyebrow" id="proj-name">Claude Code, live from this machine</div>
+    <h1>How your hooks, skills and agents are running</h1>
+    <p class="lede">Every hook, skill and agent run across this project's Claude Code sessions: how long each took, what it was working on, whether it helped, and where the tokens went. It updates as Claude works.</p>
+    <div class="bar">
+      <div class="seg" role="group" aria-label="Time range" id="ranges">
+        <button type="button" data-r="1h" aria-pressed="false">1 h</button>
+        <button type="button" data-r="today" aria-pressed="false">Today</button>
+        <button type="button" data-r="7d" aria-pressed="true">7 days</button>
+        <button type="button" data-r="30d" aria-pressed="false">30 days</button>
+        <button type="button" data-r="all" aria-pressed="false">All</button>
+      </div>
+      <div class="scope" id="scope" aria-label="Narrowed to"></div>
+      <button class="btn" type="button" id="refresh">Refresh now</button>
+      <span class="stamp" id="stamp" aria-live="polite">Not connected yet</span>
+    </div>
+  </header>
+
+  <div class="notice" id="nohost" hidden>
+    <h3>This view reads Morpheus on your machine</h3>
+    <p id="nohost-why">Start Morpheus in your project and open the address it prints.</p>
+    <ol>
+      <li>In any project folder: <code>npx github:niiashikwei/wit</code> (Node 24). It reads your Claude Code history once, then keeps up.</li>
+      <li>Open <a href="http://localhost:4673/">http://localhost:4673</a>.</li>
+      <li>Or, in the Claude desktop app, add the <code>morpheus</code> MCP server (<code>npx github:niiashikwei/wit mcp</code>) and open this page there.</li>
+    </ol>
+  </div>
+  <div class="notice" id="needs-ok" hidden>
+    <h3>Allow this page to read Morpheus</h3>
+    <p>The page asks once. Nothing leaves your machine: it reads counts and short excerpts from your Claude Code transcripts and hook logs.</p>
+    <div><button class="btn" type="button" id="allow">Allow and load</button></div>
+  </div>
+
+  <section id="s-next" aria-labelledby="h-next">
+    <div class="eyebrow">Ranked by minutes saved a week plus risk, per hour of work · last 7 days</div>
+    <h2 id="h-next">Next improvements</h2>
+    <ol class="next" id="next"><li><p class="ev">Waiting for the first numbers…</p></li></ol>
+  </section>
+
+  <section aria-labelledby="h-now">
+    <div class="eyebrow">Sessions active in the last 10 minutes</div>
+    <h2 id="h-now">Running now</h2>
+    <div class="now">
+      <div class="panel"><h3>Sessions <span class="stamp" id="sess-count"></span></h3><div id="sessions" style="display:flex;flex-direction:column;gap:8px"><p class="meta">No session has run anything in the last 10 minutes.</p></div></div>
+      <div class="panel"><h3>Latest hooks, skills and agents <span class="stamp">click one for its detail</span></h3><ul class="feed" id="feed"></ul></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-tl">
+    <div class="eyebrow">In the order they fired · hover or tab to a bar for what it did, click for its runs</div>
+    <h2 id="h-tl">Timeline</h2>
+    <div class="tl-bar">
+      <label class="meta">Session <select id="tl-session" aria-label="Session to show"></select></label>
+      <div class="ttabs" role="group" aria-label="Timeline range" id="tl-ranges">
+        <button type="button" data-r="1h" aria-pressed="true">Last hour</button>
+        <button type="button" data-r="today" aria-pressed="false">Today</button>
+      </div>
+    </div>
+    <div class="tl" id="tl" aria-label="Hooks, skills and agents over time, one lane each"><p class="meta">Waiting for the first numbers…</p></div>
+    <p class="tl-tip" id="tl-tip" aria-live="polite"></p>
+    <details><summary class="meta">The same runs as a list, newest last</summary><ul class="seq" id="tl-list"></ul></details>
+    <div class="err" id="err-tl" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-cov">
+    <div class="eyebrow">Last 7 days · does each fire when its work comes up?</div>
+    <h2 id="h-cov">Coverage</h2>
+    <p class="note">Everything defined in the project, your user folder and installed plugins, plus anything that ran without being defined there. Active: it ran. Missed: its work came up without it (a gate in a hook warned or blocked). Idle: nothing called for it. Off: switched off. Hinted counts prompts whose hook named it.</p>
+    <div class="cov-sum" role="group" aria-label="Filter by status" id="cov-sum"></div>
+    <div class="ltbl"><table id="cov"><thead><tr><th>Kind</th><th>Name</th><th>Status</th><th class="num">Ran</th><th class="num">Missed</th><th class="num">Hinted</th><th>Last</th></tr></thead><tbody></tbody></table></div>
+    <div class="err" id="err-cov" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-nums">
+    <div class="eyebrow" id="nums-range">Last 7 days</div>
+    <h2 id="h-nums">Usage, speed and effect</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="err" id="err-overview" hidden></div>
+    <div class="chart" id="chart" aria-label="Time spent in hooks and agents per day"></div>
+  </section>
+
+  <section aria-labelledby="h-tok">
+    <div class="eyebrow" id="tok-range">Last 7 days · new tokens, each reply counted once</div>
+    <h2 id="h-tok">Work vs orchestration</h2>
+    <p class="note"><b>Work</b>: tool calls that do the task (edits, tests, builds, reads, browsers). <b>Orchestration</b>: agents, messages, skill loads, plans, task lists, and commands that only look or wait (<code>git status</code>, <code>gh run watch</code>). <b>Replies</b>: turns with no tool call, talking to you or to the agent's parent. A turn with both kinds of call is split by its calls. Cached reads (the same context read again each turn) are shown apart.</p>
+    <div class="kpis" id="tok-tiles"></div>
+    <div class="legend2"><span><i class="f-work"></i>work</span><span><i class="f-orch"></i>orchestration</span><span><i class="f-talk"></i>replies</span><span><i style="background:var(--muted);opacity:.45"></i>faded: its agents</span></div>
+    <div class="tok-grid">
+      <div class="panel"><h3>By session <span class="stamp">click to narrow</span></h3><ul class="tok-bars" id="tok-sessions"></ul></div>
+      <div class="panel"><h3>By agent type <span class="stamp">faded: agents it started</span></h3><ul class="tok-bars" id="tok-agents"></ul></div>
+    </div>
+    <div class="tok-grid">
+      <div class="panel"><h3>Context added by hooks <span class="stamp">estimate · output ÷ 4</span></h3><ul class="tok-est" id="tok-hooks"></ul></div>
+      <div class="panel"><h3>Context added by skills <span class="stamp">estimate · loads × SKILL.md ÷ 4</span></h3><ul class="tok-est" id="tok-skills"></ul></div>
+    </div>
+    <div class="chart" id="tok-chart" aria-label="New tokens per day: work, orchestration and replies"></div>
+    <div class="err" id="err-tok" hidden></div>
+  </section>
+
+  <section aria-labelledby="h-tables">
+    <div class="eyebrow">Click a row to see its runs</div>
+    <h2 id="h-tables">Every hook, rule, skill, agent and tool</h2>
+    <div class="ttabs" role="group" aria-label="Table" id="ttabs">
+      <button type="button" data-k="hook" aria-pressed="true">Hooks</button>
+      <button type="button" data-k="rule" aria-pressed="false">Rules that blocked or warned</button>
+      <button type="button" data-k="skill" aria-pressed="false">Skills</button>
+      <button type="button" data-k="agent" aria-pressed="false">Agents</button>
+      <button type="button" data-k="tool" aria-pressed="false">Tools</button>
+    </div>
+    <p class="note" id="table-note"></p>
+    <div class="ltbl"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <div class="err" id="err-table" hidden></div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" hidden aria-labelledby="d-title" role="dialog" aria-modal="true"></aside>
+
+<script>
+(() => {
+const SERVER = "host:morpheus";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+const state = {
+  range: store.get("morpheus-range", "7d"),
+  table: store.get("morpheus-table", "hook"),
+  session: null, branch: null,
+  sort: { key: "runs", dir: -1 },
+  overview: null, live: null, rows: [], updatedAt: null, mcp: null, unsub: [], sample: undefined,
+  tl: null, tlSession: null, tlRange: store.get("morpheus-tl-range", "1h"),
+  cov: null, covFilter: store.get("morpheus-cov", "all"),
+  project: store.get("morpheus-project", "") || null, standalone: false,
+};
+
+// ---------- formatting ----------
+const ms = (v) => {
+  if (v == null) return "–";
+  if (v < 1000) return `${Math.round(v)} ms`;
+  if (v < 60_000) return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`;
+  if (v < 3_600_000) return `${Math.round(v / 60_000)} min`;
+  const h = Math.floor(v / 3_600_000);
+  return `${h} h ${Math.round((v % 3_600_000) / 60_000)} min`;
+};
+const num = (v) => (v == null ? "–" : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e4 ? `${Math.round(v / 1000)}k` : v.toLocaleString());
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
+const shortSession = (s) => String(s ?? "").split("/agent-")[0].slice(0, 8);
+const RANGE_LABEL = { "1h": "Last hour", today: "Today", "7d": "Last 7 days", "30d": "Last 30 days", all: "Everything recorded" };
+
+
+// ---------- scope ----------
+const scopeArgs = () => ({ range: state.range, ...(state.session ? { session: state.session } : {}), ...(state.branch ? { branch: state.branch } : {}) });
+function renderScope() {
+  const el = $("#scope");
+  el.innerHTML = "";
+  for (const [k, label] of [["session", "session"], ["branch", "branch"]]) {
+    if (!state[k]) continue;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = `${label}: ${k === "session" ? shortSession(state[k]) : state[k]}`;
+    b.title = `Show every ${label} again`;
+    b.onclick = () => { state[k] = null; changed(); };
+    el.appendChild(b);
+  }
+  for (const btn of document.querySelectorAll("#ranges button")) btn.setAttribute("aria-pressed", btn.dataset.r === state.range);
+  $("#nums-range").textContent = RANGE_LABEL[state.range] + (state.session ? ` · session ${shortSession(state.session)}` : "") + (state.branch ? ` · ${state.branch}` : "");
+}
+function narrow(k, v) { state[k] = v; closeDrawer(); changed(); }
+document.getElementById("ranges").addEventListener("click", (e) => {
+  const r = e.target.closest("button")?.dataset.r;
+  if (r) { state.range = r; store.set("morpheus-range", r); changed(); }
+});
+
+// ---------- errors ----------
+function connection(kind, why) {
+  $("#nohost").hidden = kind !== "nohost";
+  $("#needs-ok").hidden = kind !== "approval";
+  if (why) $("#nohost-why").textContent = why;
+  $("#live-dot").classList.toggle("on", kind === "ok");
+}
+function handleError(err, section) {
+  const code = err?.code;
+  if (code === "server_not_connected" || code === "not_granted" || code === "capability_disabled" || code === "capability_removed") {
+    connection("nohost", code === "server_not_connected"
+      ? "The morpheus server isn't reachable from here. Start it in your project (npx github:niiashikwei/wit) and open the address it prints, or add it to the Claude desktop app."
+      : "This view can't reach servers on your Mac here. Open the page in the Claude desktop app.");
+    return;
+  }
+  if (code === "approval_required") { connection("approval"); return; }
+  if (code === "not_in_manifest") { connection("nohost", "The morpheus server is turned off for this page. Turn it back on in the page's permissions."); return; }
+  if (code === "blocked_by_policy") { connection("nohost", "Your organization's policy blocks this server for you."); return; }
+  const box = section && document.getElementById(section);
+  if (box) { box.hidden = false; box.textContent = code === "tool_error" ? `The server answered with an error: ${err.message}` : "The server didn't answer this time. The numbers above are from the last good read; it tries again in 30 seconds."; }
+  $("#stamp").classList.add("stale");
+}
+
+// ---------- data ----------
+const withProject = (input) => (state.project ? { ...input, project: state.project } : input);
+async function call(tool, input) {
+  const r = await state.mcp.callTool(SERVER, tool, withProject(input), { cache: { refresh: true } });
+  return r.payload;
+}
+function watch(tool, input, onData, section) {
+  return state.mcp.watchTool(SERVER, tool, withProject(input), (ev) => {
+    if (ev.type === "data") {
+      connection("ok");
+      if (section) document.getElementById(section).hidden = true;
+      state.updatedAt = ev.result.cache?.storedAt ?? Date.now();
+      $("#stamp").classList.remove("stale");
+      onData(ev.result.payload);
+      tick();
+    } else handleError(ev.error, section);
+  }, { refetchInterval: 30_000, cache: { staleTime: 25_000, gcTime: 600_000 } });
+}
+function subscribe() {
+  if (!state.mcp) return;
+  for (const u of state.unsub) u();
+  state.unsub = [
+    watch("morpheus_live", { ...(state.session ? { session: state.session } : {}), ...(state.branch ? { branch: state.branch } : {}) }, (d) => { state.live = d; renderLive(); }),
+    watch("morpheus_overview", scopeArgs(), (d) => { state.overview = d; renderOverview(); }, "err-overview"),
+    watch("morpheus_timeline", tlArgs(), (d) => { state.tl = d; renderTimeline(); }, "err-tl"),
+    watch("morpheus_coverage", { range: "7d" }, (d) => { state.cov = d; renderCoverage(); }, "err-cov"),
+    watch("morpheus_tokens", scopeArgs(), (d) => { state.tok = d; renderTokens(); }, "err-tok"),
+    watch("morpheus_items", { kind: state.table, ...scopeArgs() }, (d) => { state.rows = d; renderTable(); }, "err-table"),
+  ];
+}
+function changed() { renderScope(); subscribe(); }
+$("#refresh").onclick = async () => {
+  if (!state.mcp) return;
+  $("#stamp").textContent = "Refreshing…";
+  try {
+    await Promise.all([
+      call("morpheus_live", {}).then((d) => { state.live = d; renderLive(); }),
+      call("morpheus_overview", scopeArgs()).then((d) => { state.overview = d; renderOverview(); }),
+      call("morpheus_timeline", tlArgs()).then((d) => { state.tl = d; renderTimeline(); }),
+      call("morpheus_coverage", { range: "7d" }).then((d) => { state.cov = d; renderCoverage(); }),
+      call("morpheus_tokens", scopeArgs()).then((d) => { state.tok = d; renderTokens(); }),
+      call("morpheus_items", { kind: state.table, ...scopeArgs() }).then((d) => { state.rows = d; renderTable(); }),
+    ]);
+    connection("ok");
+    state.updatedAt = Date.now();
+  } catch (e) { handleError(e, "err-overview"); $("#stamp").textContent = state.updatedAt ? `Couldn't refresh · last good read ${ago(state.updatedAt)}` : "Couldn't reach Morpheus"; return; }
+  tick();
+};
+$("#allow").onclick = async () => { try { state.live = await call("morpheus_live", {}); connection("ok"); renderLive(); subscribe(); } catch (e) { handleError(e); } };
+function tick() { if (state.updatedAt) $("#stamp").textContent = `Updated ${ago(state.updatedAt)}`; }
+setInterval(tick, 5000);
+
+// ---------- render: timeline ----------
+// The session picked here, else the page's session filter, else the most recent one.
+const tlArgs = () => ({ range: state.tlRange, ...((state.tlSession ?? state.session) ? { session: state.tlSession ?? state.session } : {}) });
+const LANES = [
+  ["hint", 0, "Skill hints"], ["skill", 0, "Skills"], ["hook", 0, "Hooks"], ["agent", 0, "Agents"],
+  ["skill", 1, "Skills in agents"], ["hook", 1, "Hooks in agents"], ["agent", 1, "Agents in agents"],
+];
+const laneOf = (e) => LANES.findIndex(([k, d]) => k === e.kind && d === Math.min(1, e.depth));
+const baseName = (e) => String(e.name).split(" · ")[0];
+const tone = (e) => (["block", "error", "cancelled", "changes-required"].includes(e.outcome) ? "f-bad" : ["warn", "override", "timeout"].includes(e.outcome) ? "f-warn" : `f-${e.kind}`);
+const tipText = (e) => `<b>${esc(e.name)}</b> · ${esc(e.kind)}${e.depth ? ` inside agent ${esc(String(e.inside).slice(0, 7))}` : ""} · ${clock(e.start)} · ${ms(e.end - e.start || null)} · ${esc(e.outcome)}${e.what ? `<br>${esc(e.what)}` : ""}`;
+function renderTimeline() {
+  const d = state.tl;
+  if (!d) return;
+  for (const b of document.querySelectorAll("#tl-ranges button")) b.setAttribute("aria-pressed", b.dataset.r === state.tlRange);
+  const sel = $("#tl-session");
+  const pick = d.session;
+  sel.innerHTML = d.sessions.map((s) => `<option value="${esc(s.session)}"${s.session === pick ? " selected" : ""}>${esc(shortSession(s.session))}${s.branch ? ` · ${esc(s.branch)}` : ""} · ${s.runs} runs · last ${clock(s.last_at)}</option>`).join("") || `<option>No session in this range</option>`;
+  const box = $("#tl");
+  const evs = d.events;
+  if (!evs.length) { box.innerHTML = `<p class="meta">Nothing recorded for this session in this range.</p>`; $("#tl-list").innerHTML = ""; return; }
+  // Lanes that have something, each split into rows so overlapping bars don't hide each other.
+  const t0 = Math.min(...evs.map((e) => e.start)), t1 = Math.max(t0 + 60_000, ...evs.map((e) => e.end));
+  const W = 960, L = 128, R = 10, T = 22, RH = 14, GAP = 10;
+  const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+  const used = [...new Set(evs.map(laneOf))].filter((i) => i >= 0).sort((a, b) => a - b);
+  const rowsEnd = {}; // lane → the right edge of each row
+  const placed = evs.map((e) => {
+    const lane = laneOf(e);
+    const x0 = x(e.start), x1 = Math.max(x0 + 3, x(e.end));
+    const ends = (rowsEnd[lane] ??= []);
+    let row = ends.findIndex((r) => r < x0 - 1);
+    if (row < 0 || e.kind === "hook" || e.kind === "hint") row = e.kind === "hook" || e.kind === "hint" ? 0 : ends.length;
+    ends[row] = Math.max(ends[row] ?? 0, x1);
+    return { e, lane, row, x0, x1 };
+  });
+  let y = T;
+  const laneY = {};
+  for (const i of used) { laneY[i] = y; y += Math.max(1, (rowsEnd[i] ?? []).length) * (RH + 3) + GAP; }
+  const H = y + 4;
+  const ticks = [];
+  const span = t1 - t0, steps = [60e3, 5 * 60e3, 10 * 60e3, 15 * 60e3, 30 * 60e3, 3600e3, 2 * 3600e3];
+  const step = steps.find((s) => span / s <= 8) ?? 4 * 3600e3;
+  for (let t = Math.ceil(t0 / step) * step; t <= t1; t += step) ticks.push(t);
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${evs.length} runs from ${clock(t0)} to ${clock(t1)}">
+    ${ticks.map((t) => `<line x1="${x(t)}" x2="${x(t)}" y1="${T - 6}" y2="${H}" stroke="var(--line)"/><text x="${x(t) + 3}" y="12">${clock(t)}</text>`).join("")}
+    ${used.map((i) => `<text class="lane-l" x="0" y="${laneY[i] + RH - 3}">${esc(LANES[i][2])}</text>`).join("")}
+    ${placed.map((p, n) => `<rect class="ev ${tone(p.e)}" data-n="${n}" tabindex="0" x="${p.x0.toFixed(1)}" y="${laneY[p.lane] + p.row * (RH + 3)}" width="${(p.x1 - p.x0).toFixed(1)}" height="${RH}" rx="2" opacity="${p.e.kind === "hook" && p.e.outcome === "ok" ? 0.55 : 0.9}"><title>${esc(p.e.name)} · ${esc(p.e.outcome)}</title></rect>`).join("")}
+  </svg>`;
+  const tip = $("#tl-tip");
+  tip.textContent = `${evs.length} runs${evs.length >= 600 ? " (the newest 600)" : ""} · red: blocked, failed or changes required · amber: warned or overridden`;
+  const at = (el) => placed[Number(el.dataset.n)]?.e;
+  box.querySelectorAll("rect.ev").forEach((r) => {
+    const e = at(r);
+    const showTip = () => { tip.innerHTML = tipText(e); };
+    r.addEventListener("mouseenter", showTip);
+    r.addEventListener("focus", showTip);
+    const open = () => e.kind !== "hint" && openItem(e.kind, baseName(e));
+    r.addEventListener("click", open);
+    r.addEventListener("keydown", (k) => { if (k.key === "Enter") open(); });
+  });
+  $("#tl-list").innerHTML = evs.slice(-200).map((e, n) => `<li data-n="${evs.length - Math.min(200, evs.length) + n}"><time>${new Date(e.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span class="k k-${esc(e.kind)}">${esc(e.kind)}</span><span class="what">${"↳ ".repeat(e.depth)}<b>${esc(e.name)}</b> <small>${esc(e.what ?? "")}</small></span><span class="o o-${esc(e.outcome)}">${esc(e.outcome)}</span></li>`).join("");
+  $("#tl-list").querySelectorAll("li").forEach((li) => { const e = evs[Number(li.dataset.n)]; li.onclick = () => e.kind !== "hint" && openItem(e.kind, baseName(e)); });
+}
+$("#tl-session").addEventListener("change", (e) => { state.tlSession = e.target.value || null; subscribe(); });
+$("#tl-ranges").addEventListener("click", (e) => {
+  const r = e.target.closest("button")?.dataset.r;
+  if (r) { state.tlRange = r; store.set("morpheus-tl-range", r); subscribe(); }
+});
+
+// ---------- render: coverage ----------
+function renderCoverage() {
+  const c = state.cov;
+  if (!c) return;
+  const f = state.covFilter;
+  $("#cov-sum").innerHTML = [["all", `All ${c.rows.length}`], ["missed", `Missed ${c.totals.missed ?? 0}`], ["idle", `Idle ${c.totals.idle ?? 0}`], ["active", `Active ${c.totals.active ?? 0}`], ["off", `Off ${c.totals.off ?? 0}`]]
+    .map(([k, label]) => `<button type="button" data-f="${k}" aria-pressed="${f === k}">${esc(label)}</button>`).join("");
+  const order = { missed: 0, idle: 1, off: 2, active: 3 };
+  const rows = c.rows.filter((r) => f === "all" || r.status === f).sort((a, b) => order[a.status] - order[b.status] || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
+  const tb = $("#cov tbody");
+  tb.innerHTML = rows.map((r, n) => `<tr data-n="${n}" tabindex="0"><td><span class="k k-${r.kind === "rule" ? "hook" : esc(r.kind)}">${esc(r.kind)}</span></td><td>${esc(r.name)}${r.mode && r.mode !== "block" ? ` <span class="stamp">${esc(r.mode)}</span>` : ""}${r.scope && r.scope !== "project" ? ` <span class="stamp">${esc(r.scope === "other" ? "built-in or elsewhere" : r.scope)}</span>` : ""}</td><td><span class="o s-${esc(r.status)}">${esc(r.status)}</span></td><td class="num">${num(r.used)}</td><td class="num">${r.missed ? `<span class="over">${r.missed}</span>` : "–"}</td><td class="num">${r.hinted ? num(r.hinted) : "–"}</td><td class="meta">${r.lastAt ? ago(r.lastAt) : "never"}</td></tr>`).join("") || `<tr><td colspan="7" class="meta">Nothing with this status.</td></tr>`;
+  tb.querySelectorAll("tr[data-n]").forEach((tr) => {
+    const r = rows[Number(tr.dataset.n)];
+    const open = () => openItem(r.kind, r.name);
+    tr.onclick = open;
+    tr.onkeydown = (e) => { if (e.key === "Enter") open(); };
+  });
+}
+$("#cov-sum").addEventListener("click", (e) => {
+  const k = e.target.closest("button")?.dataset.f;
+  if (k) { state.covFilter = k; store.set("morpheus-cov", k); renderCoverage(); }
+});
+
+// ---------- render: work vs orchestration ----------
+const fresh = (x) => (x?.work ?? 0) + (x?.orchestration ?? 0) + (x?.replies ?? 0);
+const pctOf = (a, b) => (b ? `${Math.round((100 * a) / b)}%` : "–");
+function tokBar(own, theirs, max) {
+  const seg = (x, cls, k, label) => x[k] ? `<i class="${cls} ${label === "own" ? "mine" : "theirs"}" style="flex:${x[k]}" title="${label === "own" ? "own" : "agents"} ${k}: ${num(x[k])}"></i>` : "";
+  const parts = [["work", "f-work"], ["orchestration", "f-orch"], ["replies", "f-talk"]];
+  const total = fresh(own) + fresh(theirs);
+  return `<div class="tbar" style="width:${Math.max(2, (100 * total) / (max || 1))}%">${parts.map(([k, c]) => seg(own, c, k, "own")).join("")}${theirs ? parts.map(([k, c]) => seg(theirs, c, k, "theirs")).join("") : ""}</div>`;
+}
+function renderTokens() {
+  const t = state.tok;
+  if (!t) return;
+  const T = t.totals, all = T.work.new + T.orchestration.new + T.replies.new;
+  $("#tok-range").textContent = `${RANGE_LABEL[state.range]}${state.session ? ` · session ${shortSession(state.session)}` : ""}${state.branch ? ` · ${state.branch}` : ""} · new tokens, each reply counted once`;
+  const tile = (label, x, cls) => `<div class="kpi"><span>${label}</span><b>${pctOf(x.new, all)}</b><small>${num(x.new)} new · ${num(x.cached)} cached reads</small><div class="share"><i class="${cls}" style="display:block;width:${all ? (100 * x.new) / all : 0}%"></i></div></div>`;
+  const est = (t.estimated?.hooks ?? 0) + (t.estimated?.skills ?? 0);
+  $("#tok-tiles").innerHTML = tile("Work", T.work, "f-work") + tile("Orchestration", T.orchestration, "f-orch") + tile("Replies", T.replies, "f-talk") +
+    `<div class="kpi"><span>Context from hooks and skills</span><b>~${num(est)}</b><small>estimated tokens added · hooks ~${num(t.estimated?.hooks)} · skills ~${num(t.estimated?.skills)}</small></div>`;
+  const sMax = Math.max(1, ...t.sessions.map((s) => fresh(s.own) + fresh(s.agents)));
+  const sl = $("#tok-sessions");
+  sl.innerHTML = t.sessions.slice(0, 10).map((s, n) => {
+    const own = fresh(s.own), ag = fresh(s.agents), orch = s.own.orchestration + s.agents.orchestration;
+    return `<li><div class="tb-top"><button class="link" type="button" data-n="${n}" title="Narrow the page to this session">${esc(shortSession(s.session))}${s.branch ? ` · ${esc(s.branch)}` : ""}</button><span class="stamp">${num(own + ag)} · ${pctOf(orch, own + ag)} orch.${ag ? ` · agents ${pctOf(ag, own + ag)}` : ""}</span></div>${tokBar(s.own, s.agents, sMax)}</li>`;
+  }).join("") || `<li class="meta">No replies in this range.</li>`;
+  sl.querySelectorAll("[data-n]").forEach((b) => { b.onclick = () => narrow("session", t.sessions[Number(b.dataset.n)].session); });
+  const aMax = Math.max(1, ...t.agents.map((a) => fresh(a.own) + fresh(a.agents)));
+  const al = $("#tok-agents");
+  al.innerHTML = t.agents.slice(0, 10).map((a, n) => {
+    const own = fresh(a.own), ag = fresh(a.agents);
+    return `<li><div class="tb-top"><button class="link" type="button" data-n="${n}" title="Open this agent's runs">${esc(a.type)}</button><span class="stamp">${num(own)} own${ag ? ` + ${num(ag)} nested` : ""} · ${a.runs} runs · ${num(Math.round(own / (a.runs || 1)))}/run · ${pctOf(a.own.orchestration, own)} orch.</span></div>${tokBar(a.own, a.agents, aMax)}</li>`;
+  }).join("") || `<li class="meta">No agent ran in this range.</li>`;
+  al.querySelectorAll("[data-n]").forEach((b) => { b.onclick = () => openItem("agent", t.agents[Number(b.dataset.n)].type); });
+  const estList = (rows, unit) => rows.filter((r) => r.tokens).slice(0, 8).map((r) => `<li><span>${esc(r.name)}</span><span class="stamp">~${num(r.tokens)} · ${num(r[unit])} ${unit}</span></li>`).join("") || `<li class="meta">Nothing in this range.</li>`;
+  $("#tok-hooks").innerHTML = estList(t.hooks, "runs");
+  $("#tok-skills").innerHTML = estList(t.skills, "loads");
+  renderTokChart(t.days);
+}
+function renderTokChart(days) {
+  const el = $("#tok-chart");
+  if (!days?.length) { el.innerHTML = `<p class="meta">No replies in this range.</p>`; return; }
+  const W = 720, H = 200, L = 52, B = 26, T = 10, bw = (W - L - 8) / days.length;
+  const max = Math.max(1, ...days.map(fresh));
+  const raw = max / 4, pow = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((m) => m * pow).find((x) => x >= raw);
+  const top = Math.ceil(max / step) * step;
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  let g = "";
+  for (let v = 0; v <= top + 1e-9; v += step) g += `<line x1="${L}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${num(v)}</text>`;
+  days.forEach((d, i) => {
+    const x = L + i * bw + 3, w = Math.max(2, bw - 6);
+    let base = 0;
+    for (const [k, c, label] of [["work", "--work", "work"], ["orchestration", "--orch", "orchestration"], ["replies", "--talk", "replies"]]) {
+      const v = d[k] ?? 0;
+      if (v) g += `<rect x="${x}" y="${y(base + v)}" width="${w}" height="${y(base) - y(base + v)}" fill="var(${c})"><title>${d.day}: ${label} ${num(v)} (${pctOf(v, fresh(d))})</title></rect>`;
+      base += v;
+    }
+    if (days.length <= 16 || i % 2 === 0) g += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${d.day.slice(5)}</text>`;
+  });
+  el.innerHTML = `<div class="legend2">New tokens per day</div><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="New tokens per day, split into work, orchestration and replies">${g}</svg>`;
+}
+
+// ---------- render: next 10 ----------
+function renderNext() {
+  const list = state.overview?.improvements ?? [];
+  const el = $("#next");
+  el.innerHTML = "";
+  for (const i of list) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <h3>${esc(i.title)} <span class="tag k-${["hook", "skill", "agent"].includes(i.area) ? i.area : "hint"}">${esc(i.area)}</span></h3>
+      <div class="roi"><b>${i.roi}</b>ROI</div>
+      <p class="ev">${esc(i.evidence)}</p>
+      <p>${esc(i.how)}</p>
+      <div class="acts">
+        <span class="meta-row">saves ~${i.minutesPerWeek} min/week · risk ${i.risk}/3 · ~${i.effortHours} h of work</span>
+        ${i.link ? `<button class="btn quiet" type="button" data-see>See the data</button>` : ""}
+        ${state.sample ? `<button class="btn quiet" type="button" data-explain>Explain</button>` : ""}
+      </div>`;
+    li.querySelector("[data-see]")?.addEventListener("click", () => openItem(i.link.kind, i.link.name));
+    li.querySelector("[data-explain]")?.addEventListener("click", (e) => explain(i, li, e.currentTarget));
+    el.appendChild(li);
+  }
+  if (!list.length) el.innerHTML = `<li><p class="ev">No numbers yet.</p></li>`;
+}
+async function explain(i, li, btn) {
+  let box = li.querySelector(".why");
+  if (!box) { box = document.createElement("div"); box.className = "why"; li.appendChild(box); }
+  btn.disabled = true;
+  box.textContent = "Thinking…";
+  const k = state.overview?.kpis ?? {};
+  const prompt = `You advise a developer on their Claude Code setup (hooks, skills and agents in a project). In plain words and at most 4 short sentences, say why this improvement matters for them and the first concrete step. No headings, no lists.
+Improvement: ${i.title}
+Evidence: ${i.evidence}
+Suggested fix: ${i.how}
+Context, last 7 days: ${k.hookRuns} hook runs, p95 ${ms(k.hookP95)}, ${k.blocks} blocks, ${k.hintsConverted}/${k.hints} skill hints followed, ${k.agentRuns} agent runs over ${k.sessions} sessions.`;
+  try {
+    const r = await state.sample(prompt, { modelTier: "quick", onText: ({ text }) => { box.textContent = text; } });
+    box.textContent = r.text;
+  } catch (e) {
+    box.textContent = e?.code === "not_granted" ? "Explanations need your OK for this page to ask Claude." : e?.code === "rate_limited" ? "Too many requests just now; try again in a minute." : "Couldn't get an explanation this time.";
+  }
+  btn.disabled = false;
+}
+
+// ---------- render: live ----------
+function renderLive() {
+  const d = state.live;
+  if (!d) return;
+  const box = $("#sessions");
+  $("#sess-count").textContent = `${d.sessions.length} active`;
+  box.innerHTML = d.sessions.length ? "" : `<p class="meta">No session has run anything in the last 10 minutes.</p>`;
+  for (const s of d.sessions) {
+    const div = document.createElement("div");
+    div.className = "sess";
+    const cur = s.current;
+    div.innerHTML = `
+      <div class="who"><button class="link" type="button" data-s title="Narrow the page to this session">${esc(shortSession(s.session))}</button>
+        ${s.branch ? `<button class="link" type="button" data-b title="Narrow the page to this branch">${esc(s.branch)}</button>` : ""}
+        <span class="stamp">last ${ago(s.last_at)}</span></div>
+      ${s.prompt ? `<div class="prompt">“${esc(s.prompt)}”</div>` : ""}
+      ${cur ? `<div class="doing">${esc(cur.kind === "agent" ? `agent ${cur.name}` : cur.name)} · ${ms(d.now - cur.started_at)} so far${cur.trigger ? ` · ${esc(cur.trigger)}` : ""}</div>` : ""}
+      ${s.agents.map((a) => `<div class="doing" style="color:var(--agent);background:var(--agent-bg)">agent ${esc(a.name)} · ${esc(a.detail ?? "")} · ${(a.active_ms ? `${ms(a.active_ms)} active` : ms(d.now - a.first_at))}</div>`).join("")}`;
+    div.querySelector("[data-s]").onclick = () => narrow("session", s.session);
+    div.querySelector("[data-b]")?.addEventListener("click", () => narrow("branch", s.branch));
+    box.appendChild(div);
+  }
+  const feed = $("#feed");
+  feed.innerHTML = "";
+  for (const r of d.feed) {
+    const li = document.createElement("li");
+    const kindFor = r.kind === "hint" ? "skill" : r.kind;
+    const label = r.kind === "hook" ? `${r.name}${r.rule && r.rule !== r.name ? ` → ${r.rule}` : ""}` : r.kind === "hint" ? "skill hint" : r.name;
+    li.innerHTML = `<time>${clock(r.started_at)}</time><span class="k k-${r.kind}">${r.kind}</span>
+      <span class="what"><b>${esc(label)}</b>${r.detail && r.kind === "hook" ? ` <span class="stamp">${esc(r.detail)}</span>` : ""}<small>${esc(r.trigger ?? r.output ?? "")}</small></span>
+      <span style="display:flex;gap:6px;align-items:baseline"><span class="ms">${ms(r.duration_ms)}</span><span class="o o-${esc(r.outcome)}">${esc(r.outcome)}</span></span>`;
+    li.tabIndex = 0;
+    const open = () => r.kind !== "hint" && openItem(kindFor, r.name);
+    li.onclick = open;
+    li.onkeydown = (e) => { if (e.key === "Enter") open(); };
+    feed.appendChild(li);
+  }
+  if (!d.feed.length) feed.innerHTML = `<li style="cursor:default"><span></span><span></span><span class="what">Nothing recorded in this scope yet.</span><span></span></li>`;
+}
+
+// ---------- render: overview ----------
+function renderOverview() {
+  const o = state.overview;
+  if (!o) return;
+  if (o.project) $("#proj-name").textContent = `${o.project} · live from this machine`;
+  renderNext();
+  const k = o.kpis;
+  const pct = (a, b) => (b ? Math.round((100 * a) / b) : null);
+  const conv = pct(k.hintsConverted, k.hints);
+  const timedFrom = k.timingSince ? new Date(k.timingSince).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+  const tiles = [
+    ["Active time in hooks and agents", ms(k.processMs), "idle gaps over 15 min left out", ""],
+    ["Hook runs", num(k.hookRuns), `p95 ${ms(k.hookP95)}${timedFrom ? ` · every run timed since ${timedFrom}` : " · only runs that printed"}`, k.hookP95 > 3000 ? "warn" : ""],
+    ["Blocks", num(k.blocks), `${k.workedAround} followed within 3 min by a passing command`, k.blocks && k.workedAround / k.blocks > 0.5 ? "warn" : ""],
+    ["Skill hints followed", conv == null ? "–" : `${conv}%`, `${k.hintsConverted} of ${k.hints} hints, loaded then or earlier in the session · ${k.skillLoads} loads`, conv != null && conv < 30 ? "bad" : conv >= 60 ? "good" : ""],
+    ["Agent runs", num(k.agentRuns), `${num(k.agentTokens)} new tokens · ${num(k.agentTokensCached)} cached reads`, ""],
+    ["Sessions", num(k.sessions), "top-level Claude Code sessions in range", ""],
+    ["Overrides", num(k.overrides), "named in your hooks' events log", k.overrides ? "warn" : ""],
+  ];
+  $("#kpis").innerHTML = tiles.map(([label, v, sub, cls]) => `<div class="kpi ${cls}"><span>${esc(label)}</span><b>${esc(v)}</b><small>${esc(sub)}</small></div>`).join("");
+  renderChart(o.days);
+}
+function renderChart(days) {
+  const el = $("#chart");
+  if (!days?.length) { el.innerHTML = ""; return; }
+  const W = 720, H = 200, L = 46, B = 26, T = 10, bw = (W - L - 8) / days.length;
+  const vals = days.map((d) => (d.hookMs + d.agentMs) / 60_000);
+  const max = Math.max(1, ...vals);
+  // About four gridlines at a round step (1, 2 or 5 × a power of ten), in hours past 3 hours.
+  const hours = max > 180;
+  const unitMax = hours ? max / 60 : max;
+  const raw = unitMax / 4, pow = 10 ** Math.floor(Math.log10(raw));
+  const nice = [1, 2, 5, 10].map((m) => m * pow).find((s) => s >= raw);
+  const step = (hours ? 60 : 1) * nice;
+  const top = Math.ceil(max / step) * step;
+  const y = (m) => T + (H - T - B) * (1 - m / top);
+  const label = (m) => (hours ? `${+(m / 60).toFixed(1)} h` : `${+m.toFixed(1)} min`);
+  let g = "";
+  for (let v = 0; v <= top + 1e-9; v += step) g += `<line x1="${L}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${label(v)}</text>`;
+  days.forEach((d, i) => {
+    const x = L + i * bw + 3, w = Math.max(2, bw - 6);
+    const hm = d.hookMs / 60_000, am = d.agentMs / 60_000;
+    g += `<rect x="${x}" y="${y(hm)}" width="${w}" height="${y(0) - y(hm)}" fill="var(--hook)" rx="2"><title>${d.day}: hooks ${ms(d.hookMs)}</title></rect>`;
+    g += `<rect x="${x}" y="${y(hm + am)}" width="${w}" height="${y(hm) - y(hm + am)}" fill="var(--agent)" rx="2"><title>${d.day}: agents ${ms(d.agentMs)}</title></rect>`;
+    if (d.skillLoads) g += `<circle cx="${x + w / 2}" cy="${y(hm + am) - 7}" r="3.5" fill="var(--skill)"><title>${d.skillLoads} skill loads</title></circle>`;
+    if (days.length <= 16 || i % 2 === 0) g += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${d.day.slice(5)}</text>`;
+  });
+  el.innerHTML = `<div class="legend2"><span><i style="background:var(--hook)"></i>hooks</span><span><i style="background:var(--agent)"></i>agents</span><span><i style="background:var(--skill);border-radius:50%"></i>skill loads</span></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Minutes per day in hooks and agents">${g}</svg>`;
+}
+
+// ---------- render: tables ----------
+const BUDGET = { PreToolUse: 1000, PermissionRequest: 1000, UserPromptSubmit: 2000, PostToolUse: 10000, SubagentStop: 30000, Stop: 60000, SessionStart: 15000, PreCompact: 15000 };
+const NOTES = {
+  hook: "Each hook script: how often it ran and how long it took. Red p95 is over the budget for its event (PreToolUse < 1 s, PostToolUse < 10 s, Stop < 60 s). Without hook timing (morpheus init), only runs that printed are counted.",
+  rule: "The rules inside the hooks that refused or warned. 'Worked around' counts blocks followed within 3 minutes by a command that passed.",
+  skill: "Loads, and how often a hint named the skill but it wasn't loaded. Time is how long the turn ran after the load.",
+  agent: "Each agent type: runs, wall time from its first line to its last, tokens and verdicts.",
+  tool: "Every tool Claude called: how often, how long until its result, and how often it failed or was refused. MCP tools are grouped by server.",
+};
+function columns() {
+  const base = [["name", "Name"], ["runs", "Runs", "num"], ["p50", "p50", "num"], ["p95", "p95", "num"], ["max", "Max", "num"], ["totalMs", "Total", "num"]];
+  if (state.table === "rule") return [["name", "Rule"], ["runs", "Times"], ["workedAround", "Worked around", "num"], ["mix", "Outcomes"], ["lastAt", "Last", "num"]];
+  if (state.table === "skill") return [...base.slice(0, 3), ["hintedNotLoaded", "Hinted, not loaded", "num"], ["lastAt", "Last", "num"]];
+  if (state.table === "agent") return [...base, ["tokens", "Tokens", "num"], ["verdicts", "Verdicts"]];
+  return [...base, ["mix", "Outcomes"], ["lastAt", "Last", "num"]];
+}
+function cell(r, key) {
+  const v = r[key];
+  if (key === "name") return `<td><b>${esc(v)}</b></td>`;
+  if (key === "mix") {
+    const o = r.outcomes ?? {}, t = Object.values(o).reduce((s, n) => s + n, 0) || 1;
+    const col = { ok: "var(--ok)", block: "var(--miss)", error: "var(--miss)", cancelled: "var(--miss)", warn: "var(--part)", override: "var(--part)", timeout: "var(--part)", red: "var(--part)", running: "var(--run)" };
+    return `<td><div class="mix" title="${esc(Object.entries(o).map(([k, n]) => `${k} ${n}`).join(", "))}">${Object.entries(o).map(([k, n]) => `<i style="width:${(100 * n) / t}%;background:${col[k] ?? "var(--muted)"}"></i>`).join("")}</div></td>`;
+  }
+  if (key === "verdicts") return `<td>${esc(Object.entries(v ?? {}).map(([k, n]) => `${k} ${n}`).join(" · ") || "–")}</td>`;
+  if (key === "lastAt") return `<td class="num">${v ? ago(v) : "–"}</td>`;
+  if (["p50", "p95", "max", "totalMs"].includes(key)) {
+    const over = key === "p95" && state.table === "hook" && BUDGET[r.event] && v > BUDGET[r.event];
+    return `<td class="num${over ? " over" : ""}">${ms(v)}</td>`;
+  }
+  return `<td class="num">${num(v)}</td>`;
+}
+function renderTable() {
+  const cols = columns();
+  const { key, dir } = state.sort;
+  const rows = [...(state.rows ?? [])].sort((a, b) => {
+    const x = a[key] ?? -Infinity, y = b[key] ?? -Infinity;
+    return typeof x === "string" ? dir * x.localeCompare(y) : dir * (x - y);
+  });
+  $("#tbl thead").innerHTML = `<tr>${cols.map(([k, label, cls]) => `<th class="${cls ?? ""}" ${k === key ? `aria-sort="${dir > 0 ? "ascending" : "descending"}"` : ""}><button type="button" data-sort="${k}">${esc(label)}</button></th>`).join("")}</tr>`;
+  $("#tbl tbody").innerHTML = rows.length ? rows.map((r) => `<tr tabindex="0" data-name="${esc(r.name)}">${cols.map(([k]) => cell(r, k)).join("")}</tr>`).join("") : `<tr><td colspan="${cols.length}">Nothing in this range and scope.</td></tr>`;
+  $("#table-note").textContent = NOTES[state.table];
+  for (const tr of document.querySelectorAll("#tbl tbody tr[data-name]")) {
+    const open = () => state.table !== "tool" && openItem(state.table, tr.dataset.name);
+    tr.onclick = open;
+    tr.onkeydown = (e) => { if (e.key === "Enter") open(); };
+  }
+}
+$("#tbl").addEventListener("click", (e) => {
+  const k = e.target.closest("[data-sort]")?.dataset.sort;
+  if (!k || k === "mix" || k === "verdicts") return;
+  state.sort = { key: k, dir: state.sort.key === k ? -state.sort.dir : k === "name" ? 1 : -1 };
+  renderTable();
+});
+$("#ttabs").addEventListener("click", (e) => {
+  const k = e.target.closest("button")?.dataset.k;
+  if (!k) return;
+  state.table = k;
+  store.set("morpheus-table", k);
+  for (const b of document.querySelectorAll("#ttabs button")) b.setAttribute("aria-pressed", b.dataset.k === k);
+  state.rows = [];
+  renderTable();
+  subscribe();
+});
+
+// ---------- drawer ----------
+let lastFocus = null;
+function closeDrawer() { $("#drawer").hidden = true; $("#scrim").hidden = true; lastFocus?.focus?.(); }
+$("#scrim").onclick = closeDrawer;
+addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#drawer").hidden) closeDrawer(); });
+async function openItem(kind, name) {
+  if (!state.mcp) return;
+  lastFocus = document.activeElement;
+  const d = $("#drawer");
+  d.hidden = false; $("#scrim").hidden = false;
+  d.innerHTML = `<header><div><div class="eyebrow">${esc(kind)} · ${esc(RANGE_LABEL[state.range])}</div><h2 id="d-title">${esc(name)}</h2></div><button class="btn" type="button" id="d-close">Close</button></header><p class="meta">Loading…</p>`;
+  $("#d-close").onclick = closeDrawer;
+  $("#d-close").focus();
+  try {
+    const x = await call("morpheus_item", { kind, name, ...scopeArgs() });
+    const s = x.summary;
+    const hmax = Math.max(1, ...x.histogram.map((h) => h.runs));
+    const hist = x.histogram.map((h, i) => {
+      const bh = (60 * h.runs) / hmax;
+      return `<rect x="${i * 44 + 4}" y="${70 - bh}" width="36" height="${bh}" fill="var(--${kind === "agent" ? "agent" : kind === "skill" ? "skill" : "hook"})" rx="2"><title>${h.runs} runs</title></rect>
+        <text x="${i * 44 + 22}" y="86" text-anchor="middle">${h.upTo == null ? "more" : "≤" + ms(h.upTo).replace(" ", "")}</text>${h.runs ? `<text x="${i * 44 + 22}" y="${66 - bh}" text-anchor="middle">${h.runs}</text>` : ""}`;
+    }).join("");
+    d.innerHTML = `<header><div><div class="eyebrow">${esc(kind)} · ${esc(RANGE_LABEL[state.range])}</div><h2 id="d-title">${esc(name)}</h2></div><button class="btn" type="button" id="d-close">Close</button></header>
+      <div class="stats"><div><b>${num(s.runs)}</b><span>runs</span></div><div><b>${ms(s.p50)}</b><span>p50</span></div><div><b>${ms(s.p95)}</b><span>p95</span></div><div><b>${ms(s.totalMs)}</b><span>total</span></div></div>
+      <div class="chart" style="padding:10px"><div class="legend2">How long runs took</div><svg viewBox="0 0 ${x.histogram.length * 44 + 8} 92" style="min-width:0">${hist}</svg></div>
+      <div><h3 style="font-size:15px;margin-bottom:6px">By session</h3><div class="sessrows">${x.bySession.slice(0, 8).map((b) => `<button type="button" data-session="${esc(b.session)}"><span>${esc(shortSession(b.session))} ${b.branch ? "· " + esc(b.branch) : ""}</span><span>${b.runs} runs · ${ms(b.ms)}</span></button>`).join("") || `<p class="meta">None.</p>`}</div></div>
+      <div><h3 style="font-size:15px;margin-bottom:6px">Recent runs, and what each was doing</h3><ul class="runs">${x.recent.map((r) => `<li>
+        <div class="top"><span>${new Date(r.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span>${ms(r.ms)}</span><span class="o o-${esc(r.outcome)}">${esc(r.outcome)}</span>${r.rule && r.rule !== name ? `<span>rule ${esc(r.rule)}</span>` : ""}${r.event ? `<span>${esc(r.event)}</span>` : ""}${r.verdict ? `<span>verdict ${esc(r.verdict)}</span>` : ""}${r.tokens ? `<span>${num(r.tokens)} tokens</span>` : ""}${r.branch ? `<button class="link" type="button" data-branch="${esc(r.branch)}">${esc(r.branch)}</button>` : ""}</div>
+        ${r.trigger ? `<code>${esc(r.trigger)}</code>` : ""}${r.output ? `<code class="said">${esc(r.output)}</code>` : ""}</li>`).join("") || `<li>No runs in this range.</li>`}</ul></div>`;
+    $("#d-close").onclick = closeDrawer;
+    for (const b of d.querySelectorAll("[data-session]")) b.onclick = () => narrow("session", b.dataset.session);
+    for (const b of d.querySelectorAll("[data-branch]")) b.onclick = () => narrow("branch", b.dataset.branch);
+  } catch (e) {
+    d.querySelector(".meta").textContent = e?.code === "tool_error" ? `The server answered with an error: ${e.message}` : "Couldn't load this item. Check the page is open in the Claude desktop app, or that Morpheus is running.";
+  }
+}
+
+// ---------- start ----------
+renderScope();
+for (const b of document.querySelectorAll("#ttabs button")) b.setAttribute("aria-pressed", b.dataset.k === state.table);
+renderTable();
+// Morpheus's own server: the same tools over /api, and a stream that says when Claude wrote
+// something new, so every watched view reloads within a second of it.
+function httpTransport() {
+  const watchers = new Set();
+  const callTool = async (_server, tool, input) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(input ?? {})) if (v != null && v !== "") qs.set(k, String(v));
+    const r = await fetch(`/api/${tool}?${qs}`, { cache: "no-store" });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw { code: "tool_error", message: body.error ?? `HTTP ${r.status}` };
+    return { payload: body };
+  };
+  const watchTool = (server, tool, input, handler) => {
+    let alive = true;
+    const run = () => callTool(server, tool, input)
+      .then((res) => alive && handler({ type: "data", result: { ...res, cache: { storedAt: Date.now() } } }))
+      .catch((error) => alive && handler({ type: "error", error }));
+    watchers.add(run);
+    run();
+    return () => { alive = false; watchers.delete(run); };
+  };
+  let es = null, timer = null;
+  const fire = () => { clearTimeout(timer); timer = setTimeout(() => { for (const w of watchers) w(); }, 150); };
+  const stream = () => {
+    es?.close();
+    es = new EventSource(`/api/stream${state.project ? `?project=${encodeURIComponent(state.project)}` : ""}`);
+    es.addEventListener("changed", (e) => {
+      const d = JSON.parse(e.data || "{}");
+      if (d.lines) { pulse(); fire(); }
+    });
+    es.onerror = () => $("#stamp").classList.add("stale");
+    es.onopen = () => $("#stamp").classList.remove("stale");
+  };
+  // A fallback for when the stream is down.
+  setInterval(() => { if (!es || es.readyState !== 1) fire(); }, 30_000);
+  return { callTool, watchTool, stream };
+}
+function pulse() {
+  const d = $("#live-dot");
+  d.classList.remove("ping"); void d.offsetWidth; d.classList.add("ping");
+}
+
+// The project picker: every project with Claude Code transcripts.
+async function loadProjects() {
+  try {
+    const list = await call("morpheus_projects", {});
+    const sel = $("#project");
+    const current = state.project ?? state.overview?.project ?? "";
+    sel.innerHTML = list.map((p) => `<option value="${esc(p.root)}"${p.root === current ? " selected" : ""}>${esc(p.root.split("/").slice(-2).join("/"))} · ${p.sessions} sessions</option>`).join("");
+    if (current && !list.some((p) => p.root === current)) sel.insertAdjacentHTML("afterbegin", `<option value="${esc(current)}" selected>${esc(current.split("/").slice(-2).join("/"))}</option>`);
+  } catch { $("#project").closest("label").hidden = true; }
+}
+$("#project").addEventListener("change", (e) => {
+  state.project = e.target.value || null;
+  store.set("morpheus-project", state.project ?? "");
+  state.session = null; state.branch = null; state.tlSession = null;
+  state.http?.stream();
+  changed();
+});
+
+(async () => {
+  const claude = window.claude;
+  if (!claude?.use && location.protocol.startsWith("http") && !location.hostname.endsWith("claude.ai")) {
+    state.standalone = true;
+    state.http = httpTransport();
+    state.mcp = state.http;
+    state.http.stream();
+    subscribe();
+    loadProjects();
+    return;
+  }
+  if (!claude?.use) { connection("nohost"); return; }
+  const [mcp, sample] = await Promise.all([claude.use("mcp"), claude.use("sample").catch(() => null)]);
+  state.sample = sample;
+  if (!mcp) { connection("nohost", "This view can't reach servers on your machine here. Open the page in the Claude desktop app, or run Morpheus and open its own page."); return; }
+  state.mcp = mcp;
+  subscribe();
+  loadProjects();
+})();
+})();
+</script>
+</body></html>

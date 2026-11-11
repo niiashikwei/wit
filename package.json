@@ -1,0 +1,26 @@
+{
+  "name": "wit",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Wit for Claude Code: self-tuning token optimization (Python hooks) and Morpheus, a live local dashboard of hooks, skills, agents and tokens (Node).",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "morpheus": "plugins/wit/morpheus/dist/cli.js" },
+  "files": [
+    "plugins/wit/morpheus/dist",
+    "plugins/wit/morpheus/web",
+    "plugins/wit/morpheus/hooks",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": { "node": ">=23.6" },
+  "scripts": {
+    "start": "node plugins/wit/morpheus/src/cli.ts serve --open",
+    "test": "node --test plugins/wit/morpheus/test/*.test.ts",
+    "build": "node --no-warnings plugins/wit/morpheus/scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && npm run build && git diff --exit-code plugins/wit/morpheus/dist"
+  },
+  "repository": { "type": "git", "url": "https://github.com/niiashikwei/wit.git" },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" }
+}

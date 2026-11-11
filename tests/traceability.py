@@ -27,7 +27,29 @@ def tests_by_requirement():
                 for r in getattr(fn, "_reqs", ()):
                     mapping.setdefault(r, []).append(t.id())
     walk(suite)
+    for name, reqs in morpheus_tests():
+        for r in reqs:
+            mapping.setdefault(r, []).append(f"morpheus.{name}")
     return mapping
+
+
+MORPHEUS_TESTS = os.path.join(os.path.dirname(TESTS), "plugins", "wit", "morpheus", "test")
+
+
+def morpheus_tests():
+    """(test name, [requirement IDs]) for each Morpheus Node test; untagged tests get []."""
+    found = []
+    for fname in sorted(os.listdir(MORPHEUS_TESTS)):
+        if not fname.endswith(".test.ts"):
+            continue
+        with open(os.path.join(MORPHEUS_TESTS, fname)) as f:
+            lines = f.read().split("\n")
+        for i, line in enumerate(lines):
+            m = re.match(r'^test\("(.*?)",', line)
+            if m:
+                tag = re.match(r"^// @req ((?:R\d+ ?)+)$", lines[i - 1]) if i else None
+                found.append((m.group(1), tag.group(1).split() if tag else []))
+    return found
 
 
 if __name__ == "__main__":

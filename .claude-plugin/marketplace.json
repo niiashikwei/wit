@@ -1,12 +1,12 @@
 {
   "name": "wit",
   "owner": { "name": "Nii (niiashikwei)", "url": "https://github.com/niiashikwei" },
-  "metadata": { "description": "Token optimization tooling for Claude Code." },
+  "metadata": { "description": "Token optimization and process observability for Claude Code." },
   "plugins": [
     {
       "name": "wit",
       "source": "./plugins/wit",
-      "description": "Self-tuning token optimization for Claude Code: privacy-safe local metrics, adaptive guards, cheap subagents, and audit skills."
+      "description": "Self-tuning token optimization for Claude Code (privacy-safe local metrics, adaptive guards, cheap subagents, audit skills) plus Morpheus, a live dashboard of hooks, skills, agents and tokens."
     }
   ]
 }

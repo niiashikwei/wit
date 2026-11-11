@@ -40,3 +40,22 @@ jobs:
         run: |
           python -m coverage combine
           python -m coverage report
+
+  morpheus:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Morpheus tests (R23–R34)
+        run: npm test
+      - name: dist/ matches src/
+        run: npm run build && git diff --exit-code plugins/wit/morpheus/dist

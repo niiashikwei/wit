@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "morpheus": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/morpheus/dist/cli.js", "mcp"]
+    }
+  }
+}
