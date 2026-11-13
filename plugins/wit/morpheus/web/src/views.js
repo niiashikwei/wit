@@ -138,13 +138,19 @@ export function renderTests(d, state = {}) {
 }
 
 // ---------- Tokens & cost ----------
+/** Tasks listed before the Show more button. */
+export const TASK_PAGE = 25;
+
 export function renderTokens(d, state = {}) {
   if (!d) return empty("Waiting for the first numbers…");
   const t = d.totals;
   const cats = CATEGORY_ORDER.filter((c) => d.byCategory.some((b) => b.category === c));
   const days = d.days.map((x) => ({ label: fmtDay(x.day), values: Object.fromEntries(cats.map((c) => [c, x[c] ?? 0])) }));
   const sortBtn = (k, label) => `<button type="button" data-action="sort" data-path="${k}" aria-pressed="${(state.sort ?? "tokens") === k}">${label}</button>`;
+  const shown = state.show ?? TASK_PAGE;
+  const more = d.list.length - shown;
   const rows = d.list
+    .slice(0, shown)
     .map(
       (x) => `<tr><td>${esc(new Date(x.at).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))}</td><td><span class="tag" style="border-left:3px solid ${categoryColor(x.category)}">${esc(x.category)}</span></td><td class="prompt"><details><summary>${esc(x.prompt)}</summary><div class="meta">${esc(`${x.toolCalls} tool calls (${x.toolErrors} failed) · ${x.agents} agents · skills: ${x.skills.join(", ") || "none"} · ${Object.entries(x.models).map(([m, v]) => `${m} ${fmtNum(v)}`).join(", ")}`)}</div>${x.files.length ? `<div class="meta">Edited: ${x.files.map((f) => `<code>${esc(f)}</code>`).join(" ")}</div>` : ""}</details>${x.corrected ? ' <span class="tag t-warn">corrected next</span>' : ""}</td><td class="num">${fmtNum(x.tokensNew)}</td><td class="num">${fmtNum(x.tokensCached)}</td><td class="num">${fmtMoney(x.cost)}</td><td class="num">${fmtMs(x.durationMs)}</td></tr>`,
     )
@@ -161,7 +167,7 @@ export function renderTokens(d, state = {}) {
     ${section("Tokens and cost by task category", "By category", hbars(d.byCategory.map((c) => ({ label: c.category, value: c.tokensNew, sub: `${fmtNum(c.tokensNew)} · ${fmtMoney(c.cost)} · ${c.tasks} tasks · ${fmtNum(c.tokensNew / c.tasks)} each`, color: categoryColor(c.category), action: "category", path: c.category }))))}
     ${section("Every reply in range", "By model", hbars(d.byModel.map((m, i) => ({ label: m.model, value: m.tokensNew, sub: `${fmtNum(m.tokensNew)} · ${fmtMoney(m.cost)}`, color: `var(--s${(i % 8) + 1})` }))))}
   </div>
-  ${section(`${d.count} tasks${state.category ? ` in ${state.category}` : ""} · a task is one prompt and everything it set off`, "Tasks", `<div class="bar"><div class="seg" role="group" aria-label="Sort tasks by">${sortBtn("tokens", "Tokens")}${sortBtn("cost", "Cost")}${sortBtn("duration", "Time")}${sortBtn("recent", "Newest")}</div>${state.category ? `<div class="scope"><button type="button" data-action="category" data-path="">${esc(state.category)}</button></div>` : ""}</div>${d.list.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Category</th><th>Prompt</th><th class="num">New</th><th class="num">Cached</th><th class="num">Cost</th><th class="num">Time</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No tasks.")}`)}`;
+  ${section(`${d.count} tasks${state.category ? ` in ${state.category}` : ""} · a task is one prompt and everything it set off`, "Tasks", `<div class="bar"><div class="seg" role="group" aria-label="Sort tasks by">${sortBtn("tokens", "Tokens")}${sortBtn("cost", "Cost")}${sortBtn("duration", "Time")}${sortBtn("recent", "Newest")}</div>${state.category ? `<div class="scope"><button type="button" data-action="category" data-path="">${esc(state.category)}</button></div>` : ""}</div>${d.list.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Category</th><th>Prompt</th><th class="num">New</th><th class="num">Cached</th><th class="num">Cost</th><th class="num">Time</th></tr></thead><tbody>${rows}</tbody></table></div>${more > 0 ? `<p><button type="button" class="btn" data-action="more-tasks">Show ${Math.min(more, TASK_PAGE)} more (${more} not shown)</button></p>` : ""}` : empty("No tasks.")}`)}`;
 }
 
 // ---------- AI effectiveness ----------

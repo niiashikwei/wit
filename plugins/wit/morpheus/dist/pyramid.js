@@ -362,10 +362,33 @@ export function testHistory(db              ) {
         where r.kind = 'coverage' group by r.path, r.hash order by r.at`,
     )
     .all()                                                                                                        ;
-  return {
-    runs: runs.map((r) => ({ ...r, failed: Number(r.failed ?? 0), skipped: Number(r.skipped ?? 0) })),
-    coverage: coverage.map((c) => ({ at: c.at, path: c.path, layer: c.layer, lines: c.lt ? c.lh / c.lt : null, branches: c.bt ? c.bh / c.bt : null })),
-  };
+  // One project-wide point per test run: each report path's newest version so far, summed, with
+  // reports written within a few minutes of each other (one run of the suite) read as one point.
+  const runPoints = timeline(runs, (latest) => {
+    const all = [...latest.values()];
+    return { tests: sum(all, (r) => r.tests), failed: sum(all, (r) => Number(r.failed ?? 0)), skipped: sum(all, (r) => Number(r.skipped ?? 0)), ms: sum(all, (r) => r.ms), reports: all.length };
+  });
+  const covPoints = timeline(coverage, (latest) => {
+    const all = [...latest.values()];
+    const [lt, lh, bt, bh] = [sum(all, (c) => c.lt), sum(all, (c) => c.lh), sum(all, (c) => c.bt), sum(all, (c) => c.bh)];
+    return { lines: lt ? lh / lt : null, branches: bt ? bh / bt : null, reports: all.length };
+  });
+  return { runs: runPoints, coverage: covPoints };
+}
+
+const RUN_GAP_MS = 10 * 60_000;
+const sum =    (xs     , f                  ) => xs.reduce((s, x) => s + (f(x) || 0), 0);
+
+/** Folds report versions (sorted by time) into points, one per cluster of reports written together. */
+function timeline                                           (rows     , point                               )                         {
+  const latest = new Map           ();
+  const out                         = [];
+  rows.forEach((r, i) => {
+    latest.set(r.path, r);
+    const next = rows[i + 1];
+    if (!next || next.at - r.at > RUN_GAP_MS) out.push({ at: r.at, ...point(latest) });
+  });
+  return out;
 }
 
 /** Finds every test in the project's source. */

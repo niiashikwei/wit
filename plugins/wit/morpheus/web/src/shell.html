@@ -154,6 +154,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .ttabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .ltbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .ltbl table{min-width:720px}
+.grid2 .ltbl table{min-width:0}
+.ltbl td.mono{overflow-wrap:anywhere}
 .ltbl th button{all:unset;cursor:pointer}
 .ltbl th button:focus-visible{outline:2px solid var(--new)}
 .ltbl th[aria-sort] button::after{content:" ↓"} .ltbl th[aria-sort="ascending"] button::after{content:" ↑"}
@@ -582,8 +584,9 @@ document.getElementById("main").addEventListener("click", (e) => {
   const act = el.dataset.action;
   if (act === "drill" || act === "crumb") state.tests.path = v;
   else if (act === "group") { state.tests.grouping = v; state.tests.path = ""; store.set("wit-tests-grouping", v); }
-  else if (act === "sort") { state.tasks.sort = v; store.set("wit-tasks-sort", v); }
-  else if (act === "category") state.tasks.category = v || null;
+  else if (act === "sort") { state.tasks.sort = v; state.tasks.show = null; store.set("wit-tasks-sort", v); }
+  else if (act === "category") { state.tasks.category = v || null; state.tasks.show = null; }
+  else if (act === "more-tasks") { state.tasks.show = (state.tasks.show ?? W.TASK_PAGE) + W.TASK_PAGE; renderSdlc(); return; }
   else if (act === "tab") { location.hash = v; return; }
   subscribe();
 });

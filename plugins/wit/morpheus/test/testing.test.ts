@@ -350,15 +350,37 @@ test("the pyramid zooms from layers to modules, files, classes and tests, each w
 });
 
 // @req R39
-test("test history gives counts and failures per run and coverage per report version", () => {
-  const { db } = pyramidFixture();
+test("test history sums every report's newest version into one point per run of the suite", () => {
+  const db = openStore(":memory:");
+  const T = Date.UTC(2026, 9, 1);
+  const MIN = 60_000;
+  const rep = (path: string, hash: string, at: number, kind: string) =>
+    db.prepare("insert into test_reports (path, hash, at, kind) values (?, ?, ?, ?)").run(path, hash, at, kind);
+  const tc = db.prepare("insert into test_cases (report, id, name, status, duration_ms, at) values (?, ?, ?, ?, ?, ?)");
+  const cf = db.prepare("insert into coverage_files (report, file, lines_total, lines_hit, branches_total, branches_hit, at) values (?, ?, ?, ?, ?, ?, ?)");
+  // Run 1: web and api reports a minute apart. Run 2, a day later: only api changed.
+  rep("web.xml", "aaaaaaaaaaaaaaaa", T, "tests");
+  tc.run("web.xml@aaaaaaaaaaaa", "1", "w1", "passed", 10, T);
+  tc.run("web.xml@aaaaaaaaaaaa", "2", "w2", "failed", 10, T);
+  rep("api.xml", "bbbbbbbbbbbbbbbb", T + MIN, "tests");
+  tc.run("api.xml@bbbbbbbbbbbb", "1", "a1", "passed", null, T + MIN);
+  tc.run("api.xml@bbbbbbbbbbbb", "2", "a2", "skipped", null, T + MIN);
+  rep("api.xml", "cccccccccccccccc", T + 86_400_000, "tests");
+  tc.run("api.xml@cccccccccccc", "1", "a1", "passed", 5, T + 86_400_000);
+  rep("empty.xml", "dddddddddddddddd", T + 2 * 86_400_000, "tests");
+  rep("web.info", "eeeeeeeeeeeeeeee", T, "coverage");
+  cf.run("web.info@eeeeeeeeeeee", "w.ts", 10, 5, 4, 1, T);
+  rep("api.json", "ffffffffffffffff", T + 2 * MIN, "coverage");
+  cf.run("api.json@ffffffffffff", "a.py", 30, 30, 0, 0, T + 2 * MIN);
+  rep("zero.info", "gggggggggggggggg", T + 86_400_000, "coverage");
+  cf.run("zero.info@gggggggggggg", "z.ts", 0, 0, 0, 0, T + 86_400_000);
   const h = testHistory(db);
-  assert.deepEqual(h.runs.map((r) => [r.tests, r.failed]), [[1, 1], [7, 1]]);
-  assert.equal(h.coverage.length, 4);
-  assert.equal(h.coverage[0]!.lines, 0.1);
-  db.prepare("insert into test_reports (path, hash, at, kind) values ('empty.xml', 'hhhhhhhhhhhhhhhh', 2, 'tests')").run();
-  assert.deepEqual(testHistory(db).runs.find((r) => r.path === "empty.xml")!.failed, 0);
-  db.prepare("insert into test_reports (path, hash, at, kind) values ('z.info', 'ffffffffffffffff', 1, 'coverage')").run();
-  db.prepare("insert into coverage_files (report, file, lines_total, lines_hit, at) values ('z.info@ffffffffffff', 'a', 0, 0, 1)").run();
-  assert.equal(testHistory(db).coverage[0]!.lines, null);
+  assert.deepEqual(h.runs.map((r) => [r.tests, r.failed, r.skipped, r.ms, r.reports]), [[4, 1, 1, 20, 2], [3, 1, 0, 25, 2], [3, 1, 0, 25, 3]]);
+  assert.equal(h.runs[0]!.at, T + MIN, "a run is dated by its last report");
+  assert.deepEqual(h.coverage.map((c) => [c.lines, c.branches, c.reports]), [[35 / 40, 0.25, 2], [35 / 40, 0.25, 3]]);
+  // Coverage with nothing measurable says nothing.
+  const lone = openStore(":memory:");
+  lone.prepare("insert into test_reports (path, hash, at, kind) values ('z.info', 'ffffffffffffffff', 1, 'coverage')").run();
+  lone.prepare("insert into coverage_files (report, file, lines_total, lines_hit, at) values ('z.info@ffffffffffff', 'a', 0, 0, 1)").run();
+  assert.deepEqual([testHistory(lone).coverage[0]!.lines, testHistory(lone).coverage[0]!.branches], [null, null]);
 });

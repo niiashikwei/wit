@@ -8,7 +8,7 @@ import {
   bandStatus, covStatus, esc, fmtAgo, fmtBytes, fmtDate, fmtDay, fmtMoney, fmtMs, fmtNum, fmtPct, fmtUnit, pill,
 } from "../web/src/format.js";
 import {
-  categoryColor, renderAI, renderDelivery, renderHealth, renderQuality, renderResources, renderTests, renderTokens, tabFromHash, TABS,
+  categoryColor, renderAI, renderDelivery, renderHealth, renderQuality, renderResources, renderTests, renderTokens, tabFromHash, TABS, TASK_PAGE,
 } from "../web/src/views.js";
 
 const WEB = join(import.meta.dirname, "..", "web");
@@ -67,6 +67,10 @@ test("charts are SVG strings with themed colours, axes, tooltips and empty state
 test("the pyramid draws layers sized by their share and coloured by coverage, each one clickable", () => {
   const svg = pyramid([{ key: "unit", tests: 80, coverage: 0.9, status: "good" }, { key: "integration", tests: 15, coverage: null, status: "unknown" }, { key: "custom", tests: 5 }], { width: 500 });
   has(svg, 'data-path="unit"', "b-good", "Unit", "80 tests · 84% · 90% covered", "no coverage data", 'data-path="e2e"', "End-to-end", "0 tests · 0%");
+  const widths = [...svg.matchAll(/<rect [^>]*width="([\d.]+)"/g)].map((m) => Number(m[1]));
+  assert.ok(Math.min(...widths) >= 270, "the thinnest layer still fits its label");
+  assert.ok(widths[2]! > widths[1]! && widths[1]! > widths[0]!, "wider layers have more tests");
+  assert.ok(Number(pyramid([{ key: "unit", tests: 1 }], { width: 200 }).match(/width="([\d.]+)"/)![1]) <= 192, "a narrow chart caps the minimum");
   has(pyramid([]), "0 tests");
   has(pyramid([{ key: "e2e", label: "E", tests: 0 }]), 'data-path="e2e"');
 });
@@ -219,6 +223,14 @@ test("the tokens tab shows totals, tokens per day by category, by category and m
   const good = renderTokens(tasksData({ totals: { ...tasksData().totals, tasks: 20, corrected: 1 } }));
   has(good, "kpi good");
   has(renderTokens(null), "Waiting");
+  // Long lists show a page of tasks at a time.
+  const many = tasksData({ list: Array.from({ length: TASK_PAGE + 7 }, (_, i) => ({ ...tasksData().list[1], prompt: `task ${i}` })) });
+  const first = renderTokens(many);
+  has(first, "task 24", 'data-action="more-tasks"', "Show 7 more (7 not shown)");
+  assert.ok(!first.includes("task 25"));
+  const all = renderTokens(many, { show: TASK_PAGE * 2 });
+  has(all, "task 31");
+  assert.ok(!all.includes("more-tasks"));
 });
 
 const qualityData = (over: Record<string, unknown> = {}) => ({

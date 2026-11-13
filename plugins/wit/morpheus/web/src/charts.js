@@ -132,7 +132,9 @@ export function pyramid(layers, opts = {}) {
   let out = `<svg class="pyr" viewBox="0 0 ${W} ${H}" role="img" aria-label="Testing pyramid by layer">`;
   rows.forEach((r, i) => {
     const share = total ? r.tests / total : 0;
-    const w = Math.max(120, share * (W - 8));
+    // Wide enough for its label (about 34 monospace characters), then wider by its share of tests.
+    const minW = Math.min(W - 8, 270);
+    const w = minW + share * (W - 8 - minW);
     const x = (W - w) / 2;
     const y = 2 + i * (bandH + gap);
     const status = r.status ?? "unknown";
