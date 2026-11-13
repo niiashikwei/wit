@@ -2,8 +2,13 @@
 source = plugins/wit
 data_file = .coverage
 parallel = true
+branch = true
 
 [report]
 show_missing = true
 skip_empty = true
-fail_under = 90
+fail_under = 99
+# Scripts always run as __main__, so the guard's "imported" branch never executes.
+partial_branches =
+    pragma: no branch
+    if __name__ == .__main__.:
