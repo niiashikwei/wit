@@ -55,7 +55,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - name: Morpheus tests (R23–R34)
+      - name: Morpheus tests (R23–R45, 99% coverage gate)
         run: npm test
       - name: dist/ matches src/
         run: npm run build && git diff --exit-code plugins/wit/morpheus/dist

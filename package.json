@@ -16,6 +16,7 @@
   "engines": { "node": ">=23.6" },
   "scripts": {
     "start": "node plugins/wit/morpheus/src/cli.ts serve --open",
+    "pretest": "node -e \"require('node:fs').mkdirSync('coverage', { recursive: true })\"",
     "test": "node --test --experimental-test-coverage --test-coverage-lines=99 --test-coverage-branches=99 --test-coverage-functions=99 --test-coverage-include='plugins/wit/morpheus/src/**' --test-coverage-include='plugins/wit/morpheus/web/src/**' --test-coverage-include='plugins/wit/morpheus/scripts/inline.ts' --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test-reporter=junit --test-reporter-destination=coverage/junit.xml plugins/wit/morpheus/test/*.test.ts",
     "test:fast": "node --test plugins/wit/morpheus/test/*.test.ts",
     "build": "node --no-warnings plugins/wit/morpheus/scripts/build.ts",
