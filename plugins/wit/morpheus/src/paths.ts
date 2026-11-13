@@ -63,9 +63,9 @@ export function logDirs(root: string): string[] {
 }
 
 /** Morpheus's own data: MORPHEUS_HOME, else the platform's app-data folder. */
-export function dataDir(): string {
+export function dataDir(os: string = platform()): string {
   if (process.env.MORPHEUS_HOME) return process.env.MORPHEUS_HOME;
-  if (platform() === "darwin") return join(homedir(), "Library", "Application Support", "morpheus");
+  if (os === "darwin") return join(homedir(), "Library", "Application Support", "morpheus");
   return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "morpheus");
 }
 

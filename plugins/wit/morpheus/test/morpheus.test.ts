@@ -1428,6 +1428,7 @@ test("a main-session line keeps its reply's usage with the message id and its bl
       tokensIn: 7,
       tokensOut: 3,
       tokensCached: 9,
+      tokensWrite: 2,
       model: "claude-opus-5-5",
       work: 1,
       orchestration: 1,

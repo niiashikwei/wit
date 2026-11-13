@@ -3,7 +3,7 @@
 **Wit** is a Claude Code plugin with two parts, for any project in any language:
 
 - **Token optimizer.** It cuts token usage without slowing delivery. It **measures privately, learns from every session, tunes itself**, and tells you how many tokens it saved.
-- **Morpheus dashboard.** A live, local dashboard of how your Claude Code hooks, skills, agents and tokens are running, with the next improvements ranked by return on effort.
+- **SDLC dashboard (Morpheus).** A live, local, tabbed dashboard you open beside any Claude Code project: SDLC health, DORA metrics, the testing pyramid with coverage, tokens and cost per task, AI effectiveness, code quality, resource use, and how your hooks, skills and agents are running.
 
 Requires Claude Code and Python 3 (standard library only) for the token optimizer, and Node 24 (or 23.6+) for the Morpheus dashboard and its MCP tools. Each part works without the other.
 
@@ -112,7 +112,42 @@ npx github:niiashikwei/wit init
 
 `morpheus` is `npx github:niiashikwei/wit`, or `node plugins/wit/morpheus/dist/cli.js` in a clone. `--project <dir>` picks the project; the default is the git repository you're in (its main checkout, so worktrees count as one project), else the current folder.
 
-### What you see
+### Tabs
+
+| Tab | What it answers |
+|---|---|
+| **Health** | One scorecard for the whole cycle: plan, code, review, test, build & CI, deploy, operate and AI efficiency, each good / needs a look / bad / no data, with the numbers and targets behind it and how to turn on a stage with no data. |
+| **Delivery** | The four DORA metrics (deploy frequency, lead time for changes, change failure rate, time to restore) with their State of DevOps bands, deploys per week, the lead-time distribution, CI pass rate per workflow, and recent deploys with what failed and how fast it was fixed. |
+| **Tests** | The testing pyramid by layer (unit, integration, end-to-end), sized by share so an inverted suite shows. Click a layer for a treemap of its modules, then files, classes and single tests; use the trail to zoom out, or group by feature instead. Every level shows test count, pass/fail/not run, flaky tests, time and line and branch coverage, plus coverage and failures over time and the slowest tests. |
+| **Tokens & cost** | New and cached tokens and estimated cost in total, per day by task category (feature, bugfix, test, refactor, docs, review, explore, ops), by model, and for every task: one prompt and everything it set off, with its tools, agents, skills, files and whether you had to correct it. |
+| **AI effectiveness** | How much Claude co-writes, how much of that is redone within 14 days compared with everyone else's code, tokens and cost per commit and per line, cache hit rate, corrections, interrupts, permission denials, compactions and tool errors, by task category. |
+| **Quality** | Coverage of the code that changed, test lines per code line (all commits and Claude's), churn hotspots and tool errors. |
+| **Resources** | CPU and memory of Claude Code, its MCP servers, hooks and the commands it runs, and Wit itself; the machine's load, memory and free disk; the project's disk footprint (repo, `.git`, dependencies, build output, transcripts, Wit's store); and how long test and build runs take. |
+| **Hooks & agents** | Morpheus's original view, below. |
+
+Where the SDLC data comes from, all local unless you opt in:
+- **git** (DORA, AI share, rework, hotspots): commits on the main branch, read with `git`. Claude's commits are those with a `Co-Authored-By: Claude` trailer or Claude Code's footer.
+- **Test reports** (pyramid, coverage): tests are found in the source (Python, JS/TS, Go, Java/Kotlin, Ruby, Rust, C#) and joined with the reports your test runs already write: JUnit XML, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON or Go cover profiles, in their usual paths. Each new version is kept, so history builds up as you test.
+- **Claude Code transcripts** (tasks, tokens, corrections, compactions) and **`ps`** (resources).
+- **GitHub, only if you opt in**: CI runs, deployments and `incident` issues through your `gh` CLI, at most every ten minutes.
+
+Optional settings in `.claude/wit.json` (every key optional):
+
+```json
+{
+  "deploy": "main",
+  "gh": false,
+  "failureWindowHours": 72,
+  "layers": { "integration": ["tests/integration/**"], "e2e": ["e2e/**"] },
+  "features": { "checkout": ["src/checkout/**", "tests/checkout/**"] },
+  "coverageReports": ["coverage/lcov.info", { "path": "coverage/int.xml", "layer": "integration" }],
+  "testReports": ["build/junit/*.xml"]
+}
+```
+
+`deploy` is `main` (each change landing on the main branch), `tag:v*` (matching tags), `gh-deployments` or `gh-workflow:<name>`. A deploy fails when a revert of what it shipped, a hotfix or rollback, a failed status or an incident follows within `failureWindowHours`.
+
+### Hooks & agents tab
 
 | Section | What it answers |
 |---|---|
@@ -126,13 +161,13 @@ npx github:niiashikwei/wit init
 
 ### Use it from Claude
 
-The plugin's `morpheus` MCP server exposes read-only tools: `morpheus_overview`, `morpheus_live`, `morpheus_items`, `morpheus_item`, `morpheus_timeline`, `morpheus_coverage`, `morpheus_tokens`, `morpheus_inventory` and `morpheus_projects`. To add it without the plugin:
+The plugin's `morpheus` MCP server exposes read-only tools: `morpheus_overview`, `morpheus_live`, `morpheus_items`, `morpheus_item`, `morpheus_timeline`, `morpheus_coverage`, `morpheus_tokens`, `morpheus_inventory`, `morpheus_projects`, and for the SDLC tabs `morpheus_health`, `morpheus_dora`, `morpheus_tests`, `morpheus_tasks`, `morpheus_resources` and `morpheus_quality`. To add it without the plugin:
 
 ```bash
 claude mcp add morpheus -- npx -y github:niiashikwei/wit mcp
 ```
 
-The same `web/dashboard.html` also runs as a claude.ai artifact inside the Claude desktop app, where it talks to the `morpheus` MCP server (as `host:morpheus`) instead of the local web server.
+The same `web/dashboard.html` also runs as a claude.ai artifact in the Claude desktop app, beside your Claude Code session, where it talks to the `morpheus` MCP server (as `host:morpheus`) instead of the local web server. Every tab works there too.
 
 ### Optional: richer hook data
 
@@ -155,7 +190,8 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 **Morpheus** (R30–R31) shows what happened in your sessions, so it keeps more, still only on your machine:
 - It reads `~/.claude/projects/<your project>*` and your `.claude/` folders, and writes one SQLite file per project to `~/Library/Application Support/morpheus/` (macOS) or `~/.local/share/morpheus/`.
 - Commands and hook output are cut to short excerpts, with anything that looks like a secret masked. Prompt text is kept only as a short excerpt, for the Running now panel. Agents' message bodies are never stored, only their verdicts.
-- The web server listens on 127.0.0.1 only and refuses requests not addressed to localhost. Nothing is sent anywhere. Delete the `.db` file to forget a project; the next run rebuilds it from the transcripts still on disk.
+- Resource sampling reads `ps` command lines only to tell Claude Code's processes apart; only the process group's totals are stored.
+- The web server listens on 127.0.0.1 only and refuses requests not addressed to localhost. Nothing is sent anywhere, unless you set `"gh": true`, and then only through your own `gh` CLI (R37). Delete the `.db` file to forget a project; the next run rebuilds it from the transcripts still on disk.
 
 ## Controls
 
@@ -169,7 +205,7 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 
 ## Testing
 
-Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R34). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R45). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
 
 | Suite | Covers |
 |---|---|
@@ -180,7 +216,7 @@ Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R34). Every test i
 | `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
 | `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
 | `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter, Morpheus MCP wiring (R21, R34) |
-| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI (R23–R33), tagged `// @req` |
+| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), tagged `// @req` |
 | `test_traceability.py` | Every requirement has a test; every Morpheus test is tagged |
 
 The Python tests run the scripts exactly as Claude Code does (a fresh process with JSON on stdin) against an isolated data directory.
@@ -197,7 +233,7 @@ python3 tests/traceability.py
 npm install && npm run check
 ```
 
-`npm run check` typechecks Morpheus, runs its tests (`node --test`, no network) and checks that the committed `plugins/wit/morpheus/dist/` matches its sources. `dist/` is committed so `npx` and the plugin run without a build; after changing `src/`, run `npm run build`.
+`npm run check` typechecks Morpheus, runs its tests (`node --test`, no network) with a **99% line, branch and function coverage gate** over the server, collectors, metrics and the dashboard's modules, and checks that the committed `plugins/wit/morpheus/dist/` and `web/dashboard.html` match their sources. The test run also writes `coverage/lcov.info` and `coverage/junit.xml`, so Wit's own Tests tab shows its pyramid. `dist/` and the page are committed so `npx` and the plugin run without a build; after changing `src/` or `web/src/`, run `npm run build`.
 
 Coverage for the Python side (needs `pip install coverage`; CI fails under 90%):
 ```bash

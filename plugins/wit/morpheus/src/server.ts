@@ -11,10 +11,10 @@ import { answer, project, refresh, TOOLS } from "./api.ts";
 import { logDirs, projectDirs } from "./paths.ts";
 
 /** The page: web/dashboard.html next to src/ (or dist/). */
-export function pagePath(): string {
+export function pagePath(from = import.meta.dirname): string {
   for (const p of [
-    join(import.meta.dirname, "..", "web", "dashboard.html"),
-    join(import.meta.dirname, "..", "..", "web", "dashboard.html"),
+    join(from, "..", "web", "dashboard.html"),
+    join(from, "..", "..", "web", "dashboard.html"),
   ])
     if (existsSync(p)) return p;
   throw new Error("web/dashboard.html is missing");
@@ -40,6 +40,9 @@ export interface ServeOptions {
   port: number;
   /** Debounce for the live stream, ms. */
   debounceMs?: number;
+  /** How often to look for new lines anyway, and to keep the stream open, ms. */
+  pollMs?: number;
+  beatMs?: number;
 }
 
 export function serveWeb(opts: ServeOptions) {
@@ -79,16 +82,16 @@ export function serveWeb(opts: ServeOptions) {
   };
   const unwatch = (root: string) => {
     if ([...clients].some((c) => c.root === root)) return;
-    for (const w of watchers.get(root) ?? []) w.close();
+    for (const w of watchers.get(root)!) w.close();
     watchers.delete(root);
   };
   // A slow poll as well: fs.watch can miss events (network drives, some Linux setups).
   const poll = setInterval(() => {
     for (const root of new Set([...clients].map((c) => c.root))) push(root);
-  }, 15_000);
+  }, opts.pollMs ?? 15_000);
   const beat = setInterval(() => {
     for (const c of clients) c.res.write(": keep-alive\n\n");
-  }, 25_000);
+  }, opts.beatMs ?? 25_000);
 
   const send = (res: ServerResponse, status: number, body: string, type = "application/json") => {
     res.writeHead(status, {
@@ -104,7 +107,7 @@ export function serveWeb(opts: ServeOptions) {
     const port = (server.address() as { port: number } | null)?.port ?? opts.port;
     if (!localHost(req.headers.host, port)) return send(res, 403, '{"error":"localhost only"}');
     if (req.method !== "GET") return send(res, 405, '{"error":"GET only"}');
-    const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+    const url = new URL(req.url!, `http://${req.headers.host}`);
     if (url.pathname === "/" || url.pathname === "/index.html")
       return send(res, 200, readFileSync(pagePath(), "utf8"), "text/html");
     if (url.pathname === "/api/stream") {

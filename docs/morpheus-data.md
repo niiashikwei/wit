@@ -85,3 +85,26 @@ Risk runs from 0 to 3: how much the problem lets slip through. The rules cover t
 | Agents | Costly agents (over 150k new tokens a run); agents whose own tokens are over 40% orchestration; review agents that never give a verdict; project agents never run. |
 | Tools and hooks | Tools that fail 25% of the time or more; hooks that add over 50k tokens of output a week. |
 | Setup | Hook timing switched off while hooks are wired. |
+
+## SDLC sources and definitions
+
+| Source | Where | Gives |
+|---|---|---|
+| git | the project's repository, read with `git log --numstat` from the main branch (main, master or trunk, or `mainBranch`) | commits, files and lines, landings on main, Claude co-authorship, reverts, tags |
+| Test reports | JUnit XML, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON, Go profiles in their usual output paths, plus `coverageReports` / `testReports` | test results and times, line and branch coverage per file, kept per version (by content hash, newest 60) |
+| Test source | test files by language convention | every test, its class or `describe`, and tags above it (`// @req R12`, `@req("R1")`, `@feature(x)`) |
+| `ps`, the OS | sampled every 5 s while the Resources tab is open; `du` every 10 min | CPU and memory per process group, machine load, memory and free disk, disk footprint |
+| GitHub (opt-in) | `gh run list`, `gh api …/deployments`, `gh issue list --label incident` | CI runs, deployments and their status, incidents |
+
+- **Deploy:** per `deploy` in `.claude/wit.json`: each landed commit (`main`), matching tags (`tag:<glob>`), GitHub deployments, or successful runs of a GitHub workflow.
+- **Lead time:** a deploy's time minus when its work started: for a merge, the earliest author time of the commits it brought in; for a squash or direct commit, its author time; for a tag, the median over the commits since the previous tag.
+- **Failed deploy:** a revert of a commit it shipped, or a hotfix/rollback commit or an incident after it, within `failureWindowHours` (72 h); or its own failed status. **Time to restore** runs to the fix (or the incident's close, or the next good deploy).
+- **Bands** (State of DevOps): frequency daily+/weekly+/monthly+; lead time < 1 day / < 1 week / < 1 month; failure rate ≤ 5% / 10% / 15%; restore < 1 h / < 1 day / < 1 week.
+- **Layers:** `layers` globs first, then folders and names: `e2e/`, `cypress/`, `playwright/`, `*.e2e.*`, `*.cy.*` are end-to-end; `integration/`, `it/`, `*.int.*`, `*IT.java` are integration; the rest unit.
+- **Coverage per node:** a layer's own report when one is tagged with it; for a module, file or class, the files its tests target by name (`test_cart.py` → `cart.py`, `cart.test.ts` → `cart.ts`), preferring a matching folder; for the whole suite, a layer or a feature, all the code measured. Each node says which it is.
+- **Flaky:** both passed and failed in the last 30 days of results.
+- **Task:** a prompt to the next prompt in the same session, with its agents. Category from the prompt's words, else from what it touched. **Corrected:** the next prompt pushes back ("no", "undo", "actually", an interrupt).
+- **Cost:** Anthropic's list prices per million tokens by model (cache writes 1.25× input, cache reads at the model's read price); an estimate.
+- **Rework:** for each commit's added lines in a code file, the lines later commits deleted from that file within 14 days, at most the lines added.
+- **Hotspots:** code files ranked by commits × churn in range, with their size now.
+

@@ -8,3 +8,5 @@ node_modules/
 *.db-wal
 *.db-shm
 .DS_Store
+coverage/
+.claude/launch.json

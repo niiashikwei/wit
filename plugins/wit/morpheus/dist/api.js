@@ -24,8 +24,19 @@ import {
 } from "./metrics.js";
 import { dbPath, listProjects, projectRoot } from "./paths.js";
 import { openStore } from "./store.js";
+import { loadConfig,                } from "./config.js";
+import { ingestGit } from "./git.js";
+import { ingestGh,             } from "./gh.js";
+import { dora } from "./dora.js";
+import { ingestReports } from "./testreports.js";
+import { allTests, discover,                                latestCoverage, pyramidNode, testHistory } from "./pyramid.js";
+import {                tasksReport } from "./tasks.js";
+import { diskSample, resources, sample } from "./resources.js";
+import { quality } from "./quality.js";
+import { health } from "./health.js";
 
 const RANGES          = ["1h", "today", "7d", "30d", "all"];
+const SORTS             = ["tokens", "cost", "duration", "recent"];
 const KINDS = ["hook", "rule", "skill", "agent", "tool"]         ;
                                    
 
@@ -44,6 +55,17 @@ export function scopeOf(input                          = {})        {
                  
                                                      
                        
+                                                          
+                 
+                                                              
+                 
+                                             
+                            
+                  
+                                                        
+                        
+                                             
+              
  
 
 const open = new Map                 ();
@@ -53,13 +75,19 @@ export function project(root                , opts                              
   const r = resolve(root ?? projectRoot());
   let p = open.get(r);
   if (!p) {
+    const file = opts.db ?? dbPath(r);
     p = {
       root: r,
-      db: openStore(opts.db ?? dbPath(r)),
+      db: openStore(file),
       def: inventory(r),
       defAt: Date.now(),
       readAt: 0,
       projectsDir: opts.projectsDir,
+      cfg: loadConfig(r),
+      sdlcAt: 0,
+      found: null,
+      foundAt: 0,
+      dbFile: file === ":memory:" ? null : file,
     };
     open.set(r, p);
   }
@@ -76,6 +104,63 @@ export function refresh(p         , minMs = 2000)         {
   if (now - p.readAt < minMs) return 0;
   p.readAt = now;
   return ingest(p.db, { root: p.root, projectsDir: p.projectsDir });
+}
+
+/**
+ * Reads the SDLC sources: git history, test and coverage reports, and GitHub when opted in. At
+ * most every 15 seconds (GitHub every 10 minutes); returns how many records it read.
+ */
+export function refreshSdlc(p         , now = Date.now(), minMs = 15_000)         {
+  if (now - p.sdlcAt < minMs) return 0;
+  p.sdlcAt = now;
+  p.cfg = loadConfig(p.root);
+  return ingestGit(p.db, p.root, p.cfg) + ingestReports(p.db, p.root, p.cfg) + ingestGh(p.db, p.root, p.cfg, now, p.gh);
+}
+
+/** The tests in the project's source, found again at most once a minute. */
+export function tests(p         , now = Date.now())              {
+  if (!p.found || now - p.foundAt > 60_000) {
+    p.found = discover(p.root);
+    p.foundAt = now;
+  }
+  return p.found;
+}
+
+/** The testing pyramid at a path, with history, the slowest and flaky tests. */
+export function testsView(p         , input                         , now        ) {
+  const grouping           = input.grouping === "feature" ? "feature" : "layer";
+  const path = typeof input.path === "string" && input.path ? input.path.split("|").slice(0, 6) : [];
+  const all = allTests(p.db, p.root, p.cfg, tests(p, now));
+  const cov = latestCoverage(p.db);
+  const view = pyramidNode(all, cov, grouping, path);
+  const top = pyramidNode(all, cov, "layer", []).node;
+  const reports = p.db.prepare("select path, kind, framework, layer, max(at) as at, count(*) as versions from test_reports group by path order by at desc").all();
+  return {
+    ...view,
+    pyramid: top,
+    history: testHistory(p.db),
+    slowest: all.filter((t) => t.durationMs != null).sort((a, b) => b.durationMs  - a.durationMs ).slice(0, 10).map((t) => ({ id: t.id, name: t.name, file: t.file, layer: t.layer, durationMs: t.durationMs })),
+    flaky: all.filter((t) => t.flaky).slice(0, 20).map((t) => ({ id: t.id, name: t.name, file: t.file, layer: t.layer })),
+    failing: all.filter((t) => t.status === "failed").slice(0, 20).map((t) => ({ id: t.id, name: t.name, file: t.file, layer: t.layer })),
+    reports,
+  };
+}
+
+/** Everything the health scorecard needs, computed once. */
+export function healthView(p         , input                         , now        ) {
+  const s = scopeOf(input);
+  const d = dora(p.db, s.range, now, p.cfg);
+  const t = tasksReport(p.db, { range: s.range }, now, { limit: 0 });
+  const q = quality(p.db, p.root, s.range, now, t.totals);
+  const tv = pyramidNode(allTests(p.db, p.root, p.cfg, tests(p, now)), latestCoverage(p.db), "layer", []).node;
+  return {
+    ...health(p.db, s.range, now, { dora: d, tasks: t, quality: q, tests: { node: tv }, ghOn: p.cfg.gh }),
+    dora: { frequency: d.frequency, leadTime: d.leadTime, failureRate: d.failureRate, restore: d.restore, deploys: d.deploys, weeks: d.weeks, source: d.source },
+    tokens: t.totals,
+    pyramid: tv,
+    ai: q.ai,
+    improvements: improvements(p, now).slice(0, 5),
+  };
 }
 
 /** The ranked improvements, always over the last 7 days so the list stays steady while you filter. */
@@ -233,6 +318,74 @@ export const TOOLS         = [
     run: (p, input, now) => tokens(p.db, scopeOf(input), now, p.def),
   },
   {
+    name: "morpheus_health",
+    description:
+      "One SDLC scorecard: plan, code, review, test, build, deploy, operate and AI efficiency, each good, warn, bad or unknown with the numbers and thresholds behind it, plus headline DORA, token and test numbers.",
+    inputSchema: { type: "object", properties: { range: scopeProps.range, project: scopeProps.project } },
+    run: (p, input, now) => healthView(p, input, now),
+  },
+  {
+    name: "morpheus_dora",
+    description:
+      "The four DORA metrics (deploy frequency, lead time for changes, change failure rate, time to restore) with their performance bands, weekly trend, recent deploys and CI pass rate. From git, or GitHub when opted in.",
+    inputSchema: { type: "object", properties: { range: scopeProps.range, project: scopeProps.project } },
+    run: (p, input, now) => dora(p.db, scopeOf(input).range, now, p.cfg),
+  },
+  {
+    name: "morpheus_tests",
+    description:
+      "The testing pyramid: tests by layer (unit, integration, e2e) → module → file → class → test, or by feature, with counts, results, time and coverage at each level; plus history, slowest, flaky and failing tests.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        grouping: { type: "string", enum: ["layer", "feature"], description: "Group by layer (default) or feature." },
+        path: { type: "string", description: "The node to open, its keys joined by |, e.g. unit|src/api. Empty for the whole pyramid." },
+        project: scopeProps.project,
+      },
+    },
+    run: (p, input, now) => testsView(p, input, now),
+  },
+  {
+    name: "morpheus_tasks",
+    description:
+      "Tokens and estimated cost per task (one prompt and everything it set off), by task category, by model and per day, with the task list sorted by tokens, cost, duration or recency.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...scopeProps,
+        sort: { type: "string", enum: SORTS, description: "Order of the task list; default tokens." },
+        category: { type: "string", description: "Only tasks in this category." },
+      },
+    },
+    run: (p, input, now) =>
+      tasksReport(p.db, scopeOf(input), now, {
+        sort: SORTS.includes(input.sort            ) ? (input.sort            ) : "tokens",
+        category: typeof input.category === "string" && input.category ? input.category : null,
+      }),
+  },
+  {
+    name: "morpheus_resources",
+    description:
+      "CPU and memory of Claude Code, its MCP servers, hooks and commands, and Wit itself; the machine's load, memory and free disk; the project's disk footprint; and the time test and build commands take.",
+    inputSchema: { type: "object", properties: { range: scopeProps.range, project: scopeProps.project } },
+    run: (p, input, now) => {
+      const last = (p.db.prepare("select max(at) as t from resource_samples").get()                        ).t ?? 0;
+      if (now - last >= p.cfg.sampleSeconds * 1000) sample(p.db, p.root, now);
+      diskSample(p.db, p.root, now, p.dbFile);
+      return resources(p.db, scopeOf(input).range, now);
+    },
+  },
+  {
+    name: "morpheus_quality",
+    description:
+      "Whether AI help pays off and code stays healthy: AI co-authored share, AI lines redone within 14 days, tokens and cost per commit and line, cache hits, corrections, denials, compactions, tool errors, test-to-code ratio, churn hotspots and coverage of changed code.",
+    inputSchema: { type: "object", properties: { range: scopeProps.range, project: scopeProps.project } },
+    run: (p, input, now) => {
+      const s = scopeOf(input);
+      return quality(p.db, p.root, s.range, now, tasksReport(p.db, { range: s.range }, now, { limit: 0 }).totals);
+    },
+  },
+  {
     name: "morpheus_inventory",
     description:
       "What the project has set up: hook scripts and their events, rules, skills with their sizes, agents, and where each is defined (project, user, plugin).",
@@ -253,5 +406,6 @@ export function answer(
   if (name === "morpheus_projects") return tool.run(null         , input, Date.now());
   const p = project(root);
   refresh(p);
+  refreshSdlc(p);
   return tool.run(p, input, opts.now ?? Date.now());
 }

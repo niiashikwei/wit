@@ -49,6 +49,8 @@ export interface Usage {
   tokensOut: number;
   /** The cached context read again. */
   tokensCached: number;
+  /** Of tokensIn, the part written to the cache (priced higher than plain input). */
+  tokensWrite?: number;
   model: string | null;
   /** This line's tool calls that do the task, that coordinate, and its text blocks. */
   work: number;
@@ -76,6 +78,8 @@ export interface Parsed {
   lastText: string | null;
   /** When the line was written: an agent runs from its first line to its last. */
   at: number | null;
+  /** Session events worth counting: a context compaction, a permission denial, an interrupt. */
+  marks?: { session: string; at: number; type: "compact" | "denied" | "interrupt" }[];
 }
 
 const EXCERPT = 240;
@@ -248,7 +252,11 @@ const empty = (): Parsed => ({
   usage: [],
   lastText: null,
   at: null,
+  marks: [],
 });
+
+/** A tool result that says the person turned the call down. */
+const DENIED = /doesn't want to proceed|tool use was rejected|permission to use .* (was )?denied/i;
 
 /**
  * Reads one transcript line. A subagent's file passes `agent`, so its calls and hooks count under
@@ -267,6 +275,10 @@ export function parseTranscriptLine(line: string, opts: { agent?: string } = {})
   if (!Number.isFinite(at) || !row.sessionId) return out;
   out.at = at;
   const session = opts.agent ? `${row.sessionId}/agent-${opts.agent}` : String(row.sessionId);
+  if (row.type === "system" && row.subtype === "compact_boundary") {
+    out.marks!.push({ session, at, type: "compact" });
+    return out;
+  }
   const base = {
     session,
     branch: row.gitBranch || null,
@@ -375,6 +387,7 @@ export function parseTranscriptLine(line: string, opts: { agent?: string } = {})
         tokensIn: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
         tokensOut: u.output_tokens ?? 0,
         tokensCached: u.cache_read_input_tokens ?? 0,
+        tokensWrite: u.cache_creation_input_tokens ?? 0,
         model: row.message?.model ?? null,
         ...blocks,
       });
@@ -383,17 +396,22 @@ export function parseTranscriptLine(line: string, opts: { agent?: string } = {})
 
   if (row.type === "user") {
     const results = Array.isArray(content) ? content.filter((c) => c?.type === "tool_result") : [];
-    for (const c of results)
+    for (const c of results) {
+      if (c.is_error && DENIED.test(textOf(c.content))) out.marks!.push({ session, at, type: "denied" });
       out.results.push({
         toolUseId: c.tool_use_id,
         at,
         isError: !!c.is_error,
         agentId: row.toolUseResult?.agentId ?? null,
       });
-    const text = textOf(content).trim();
+    }
+    // The desktop app puts its own <system-reminder> notes before what the person typed.
+    const text = textOf(content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
     // A person's prompt: no tool result, no harness notice, not a skill's own text.
-    if (!opts.agent && !results.length && !row.isMeta && text && !/^<[\w-]+/.test(text))
-      out.prompts.push({ session, at, text: redact(text, 160) ?? "" });
+    if (!opts.agent && !results.length && !row.isMeta && text && !/^<[\w-]+/.test(text)) {
+      out.prompts.push({ session, at, text: redact(text, 160)! });
+      if (/^\[Request interrupted/.test(text)) out.marks!.push({ session, at, type: "interrupt" });
+    }
   }
   return out;
 }

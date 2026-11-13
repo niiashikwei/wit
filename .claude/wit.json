@@ -1,0 +1,12 @@
+{
+  "deploy": "main",
+  "layers": {
+    "integration": [
+      "tests/test_*.py",
+      "plugins/wit/morpheus/test/server.test.ts",
+      "plugins/wit/morpheus/test/cli.test.ts",
+      "plugins/wit/morpheus/test/sdlc-api.test.ts"
+    ]
+  },
+  "coverageReports": ["coverage/python.json"]
+}

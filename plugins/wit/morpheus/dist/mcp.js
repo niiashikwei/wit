@@ -69,21 +69,26 @@ export function handle(
 }
 
 /** Serves MCP on stdin/stdout for the project at `root`. */
-export function serveMcp(root        ) {
-  const call = (name        , input                         ) => answer(name, input, { root });
-  const rl = createInterface({ input: process.stdin });
+export function serveMcp(
+  root        ,
+  input                        = process.stdin,
+  output                        = process.stdout,
+) {
+  const call = (name        , args                         ) => answer(name, args, { root });
+  const rl = createInterface({ input });
   rl.on("line", (line) => {
     if (!line.trim()) return;
     let msg         ;
     try {
       msg = JSON.parse(line);
     } catch {
-      process.stdout.write(
+      output.write(
         `${JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } })}\n`,
       );
       return;
     }
     const out = handle(msg, { call });
-    if (out) process.stdout.write(`${JSON.stringify(out)}\n`);
+    if (out) output.write(`${JSON.stringify(out)}\n`);
   });
+  return rl;
 }

@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box}*,*::before,*::after{box-sizing:inherit}body{margin:0}[hidden]{display:none!important}</style></head><body>
-<title>Morpheus</title>
+<title>Wit Dashboard</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,750&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -30,7 +30,7 @@
   --new:#ff8a5c; --new-bg:#3a2219;
   --ok:#7fcf83; --ok-bg:#1d3320; --part:#f2c165; --part-bg:#3a2f17; --miss:#ff8b80; --miss-bg:#3d1f1c; color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15.5px;line-height:1.55}
-.wrap{max-width:1080px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:56px}
+.wrap{max-width:1180px;margin:0 auto;padding-block:40px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:56px}
 h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
 h1{font-size:clamp(30px,5vw,46px);font-weight:750;letter-spacing:-.02em}
 h2{font-size:26px;font-weight:750;letter-spacing:-.01em}
@@ -67,7 +67,7 @@ tr:last-child td{border-bottom:0}
 
 .tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
-.tabs-in{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:4px;align-items:flex-end}
+.tabs-in{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:4px;align-items:flex-end}
 .tabs a{font:600 14.5px var(--body);color:var(--muted);text-decoration:none;padding:14px 14px 12px;border-bottom:2.5px solid transparent;display:flex;gap:8px;align-items:center}
 .tabs a[aria-current="page"]{color:var(--ink);border-bottom-color:var(--ink)}
 .tabs a:focus-visible{outline:2px solid var(--new);outline-offset:-2px}
@@ -226,16 +226,84 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .sessrows button span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 
-<nav class="tabs" aria-label="Morpheus"><div class="tabs-in">
-  <a href="#live" id="tab-live" aria-current="page"><span class="dot" id="live-dot"></span>Morpheus</a>
+
+<style>
+/* Wit SDLC tabs: series palette (validated categorical order), tab panels, stages, pyramid, treemap. */
+:root{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767}}
+:root[data-theme="dark"]{--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767}
+.tabs-in{overflow-x:auto;scrollbar-width:none}
+.tabs-in::-webkit-scrollbar{display:none}
+.tabs a{white-space:nowrap}
+.tabpanel{display:flex;flex-direction:column;gap:40px}
+.view{display:flex;flex-direction:column;gap:28px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+@media (max-width:820px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .val{fill:var(--ink)}
+.chart .hit{fill:transparent}
+.chart rect.seg{stroke:var(--surface);stroke-width:2}
+.spark{display:block;width:100%;max-width:140px;height:28px;margin-top:6px}
+.kbtn{border:0;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.kbtn:hover{background:var(--bg)} .kbtn:focus-visible{outline:2px solid var(--new);outline-offset:-2px}
+.pill{display:inline-flex;gap:4px;align-items:center;font:600 12px var(--body);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.p-good{background:var(--ok-bg);color:var(--ok)} .p-warn{background:var(--part-bg);color:var(--part)} .p-bad{background:var(--miss-bg);color:var(--miss)} .p-unknown{background:var(--code-bg);color:var(--code)}
+.hero{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.ring{width:120px;height:120px;flex:none}
+.ring .track{fill:none;stroke:var(--code-bg);stroke-width:10}
+.ring .arc{fill:none;stroke-width:10;stroke-linecap:round}
+.ring text{font:750 28px var(--display);fill:var(--ink)}
+.r-good .arc{stroke:var(--ok)} .r-warn .arc{stroke:var(--part)} .r-bad .arc{stroke:var(--miss)} .r-unknown .arc{stroke:var(--muted)}
+.stages{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.stage{background:var(--surface);border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.stage.s-good{border-left-color:var(--ok)} .stage.s-warn{border-left-color:var(--part)} .stage.s-bad{border-left-color:var(--miss)} .stage.s-unknown{border-left-color:var(--line)}
+.stage header{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.stage .q{font-size:13.5px;color:var(--muted)}
+.stage ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.stage li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;font-size:13.5px}
+.stage li b{font:700 15px var(--display);font-variant-numeric:tabular-nums;text-align:right}
+.stage li small{grid-column:1/3;font:11.5px var(--mono);color:var(--muted)}
+.stage .hint{font-size:12.5px;color:var(--muted);background:var(--bg);border-radius:6px;padding:6px 8px}
+.imps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.hbars{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.hbars li{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hbars li[data-action]{cursor:pointer}
+.hb-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;min-width:0}
+.hb-l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.hb{height:10px;border-radius:3px;background:var(--code-bg);overflow:hidden}
+.hb i{display:block;height:100%;border-radius:0 3px 3px 0;min-width:2px}
+.crumbs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--muted);font-size:13px;min-width:0}
+.crumb{font:500 13px var(--mono);background:var(--code-bg);color:var(--ink);border:0;border-radius:6px;padding:4px 8px;cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pyr-wrap{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.pyr-wrap{grid-template-columns:minmax(0,1fr)}}
+.pyr-side{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.chart svg.pyr,.chart svg.tree{min-width:0}
+.band,.cell{cursor:pointer}
+.band rect,.cell rect{stroke:var(--surface);stroke-width:2}
+.band:focus-visible rect,.cell:focus-visible rect{stroke:var(--ink)}
+.b-good rect{fill:var(--ok-bg)} .b-warn rect{fill:var(--part-bg)} .b-bad rect{fill:var(--miss-bg)} .b-unknown rect{fill:var(--code-bg)}
+.b-good:hover rect,.b-warn:hover rect,.b-bad:hover rect,.b-unknown:hover rect{filter:brightness(.96)}
+.chart .bl{fill:var(--ink);font:600 14px var(--body)}
+.chart .bs{fill:var(--muted);font:12px var(--mono)}
+.plain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.plain li{overflow-wrap:anywhere}
+.tag{background:var(--code-bg);color:var(--ink)} .t-ai{background:var(--agent-bg);color:var(--agent)} .t-warn{background:var(--part-bg);color:var(--part)}
+td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhere}
+.ltbl tbody tr:not([data-action]){cursor:default}
+.tip{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:var(--bg);font:12.5px var(--body);padding:6px 9px;border-radius:6px;max-width:320px;box-shadow:var(--shadow)}
+.ltbl .mono{font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
+</style>
+<nav class="tabs" aria-label="Dashboard"><div class="tabs-in" id="tabbar">
+  <span class="dot" id="live-dot" title="Live"></span>
+  <a href="#health" data-tab="health">Health</a><a href="#delivery" data-tab="delivery">Delivery</a><a href="#tests" data-tab="tests">Tests</a><a href="#tokens" data-tab="tokens">Tokens &amp; cost</a><a href="#ai" data-tab="ai">AI effectiveness</a><a href="#quality" data-tab="quality">Quality</a><a href="#resources" data-tab="resources">Resources</a><a href="#process" data-tab="process">Hooks &amp; agents</a>
   <label class="proj">Project <select id="project" aria-label="Project to show"></select></label>
 </div></nav>
 
-<main class="wrap live" id="live">
+<main class="wrap live" id="main">
   <header style="display:flex;flex-direction:column;gap:14px">
-    <div class="eyebrow" id="proj-name">Claude Code, live from this machine</div>
-    <h1>How your hooks, skills and agents are running</h1>
-    <p class="lede">Every hook, skill and agent run across this project's Claude Code sessions: how long each took, what it was working on, whether it helped, and where the tokens went. It updates as Claude works.</p>
+    <div class="eyebrow" id="proj-name">Wit · live from this machine</div>
+    <h1 id="tab-title">SDLC health</h1>
+    <p class="lede" id="tab-lede">How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time.</p>
     <div class="bar">
       <div class="seg" role="group" aria-label="Time range" id="ranges">
         <button type="button" data-r="1h" aria-pressed="false">1 h</button>
@@ -265,6 +333,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
     <div><button class="btn" type="button" id="allow">Allow and load</button></div>
   </div>
 
+  <div class="tabpanel" data-tab="process" hidden>
   <section id="s-next" aria-labelledby="h-next">
     <div class="eyebrow">Ranked by minutes saved a week plus risk, per hour of work · last 7 days</div>
     <h2 id="h-next">Next improvements</h2>
@@ -345,11 +414,587 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
     <div class="ltbl"><table id="tbl"><thead></thead><tbody></tbody></table></div>
     <div class="err" id="err-table" hidden></div>
   </section>
+</div>
+  <div class="tabpanel" data-tab="health" hidden><div class="view" id="v-health"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-health" hidden></div></div>
+  <div class="tabpanel" data-tab="delivery" hidden><div class="view" id="v-delivery"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-delivery" hidden></div></div>
+  <div class="tabpanel" data-tab="tests" hidden><div class="view" id="v-tests"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-tests" hidden></div></div>
+  <div class="tabpanel" data-tab="tokens" hidden><div class="view" id="v-tokens"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-tokens" hidden></div></div>
+  <div class="tabpanel" data-tab="ai" hidden><div class="view" id="v-ai"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-ai" hidden></div></div>
+  <div class="tabpanel" data-tab="quality" hidden><div class="view" id="v-quality"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-quality" hidden></div></div>
+  <div class="tabpanel" data-tab="resources" hidden><div class="view" id="v-resources"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-resources" hidden></div></div>
 </main>
+<div class="tip" id="tip" hidden></div>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="drawer" id="drawer" hidden aria-labelledby="d-title" role="dialog" aria-modal="true"></aside>
 
+<script>
+const W = (() => {
+"use strict";
+// format.js
+// Formatting for the dashboard: numbers, times, sizes, money and safe HTML. Pure functions.
+
+const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function fmtMs(v) {
+  if (v == null || !Number.isFinite(v)) return "–";
+  if (v < 1000) return `${Math.round(v)} ms`;
+  if (v < 60_000) return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`;
+  if (v < 3_600_000) return `${Math.round(v / 60_000)} min`;
+  if (v < 86_400_000) return `${(v / 3_600_000).toFixed(v < 36_000_000 ? 1 : 0)} h`;
+  return `${(v / 86_400_000).toFixed(v < 864_000_000 ? 1 : 0)} d`;
+}
+
+function fmtNum(v) {
+  if (v == null || !Number.isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e4) return `${Math.round(v / 1000)}k`;
+  if (a >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return Number.isInteger(v) ? String(v) : v.toFixed(a < 10 ? 2 : 1);
+}
+
+const fmtPct = (v, digits = 0) => (v == null || !Number.isFinite(v) ? "–" : `${(v * 100).toFixed(digits)}%`);
+
+function fmtBytes(v) {
+  if (v == null || !Number.isFinite(v)) return "–";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let n = v;
+  while (n >= 1024 && i < units.length - 1) ((n /= 1024), i++);
+  return `${n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
+
+function fmtMoney(v) {
+  if (v == null || !Number.isFinite(v)) return "–";
+  if (v === 0) return "$0";
+  if (v < 0.01) return "<$0.01";
+  if (v < 100) return `$${v.toFixed(2)}`;
+  return `$${Math.round(v).toLocaleString("en-US")}`;
+}
+
+function fmtAgo(t, now = Date.now()) {
+  if (t == null) return "never";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return `${s} s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+}
+
+const fmtDate = (t) => {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const fmtDay = (key) => {
+  const [, m, d] = String(key).split("-");
+  return m && d ? `${+m}/${+d}` : String(key);
+};
+
+/** A metric value by its unit, as the health scorecard reports it. */
+function fmtUnit(value, unit) {
+  if (value == null) return "–";
+  if (typeof value === "string") return value;
+  if (unit === "pct") return fmtPct(value, value < 0.1 && value > 0 ? 1 : 0);
+  if (unit === "ms") return fmtMs(value);
+  if (unit === "perWeek") return value >= 7 ? `${(value / 7).toFixed(1)}/day` : `${value.toFixed(1)}/wk`;
+  if (unit === "ratio") return value.toFixed(2);
+  return fmtNum(value);
+}
+
+const STATUS_LABEL = { good: "Good", warn: "Needs a look", bad: "Bad", unknown: "No data" };
+const STATUS_ICON = { good: "✓", warn: "!", bad: "✕", unknown: "–" };
+const BAND_LABEL = { elite: "Elite", high: "High", medium: "Medium", low: "Low" };
+const bandStatus = (b) => (b == null ? "unknown" : b === "elite" || b === "high" ? "good" : b === "medium" ? "warn" : "bad");
+const covStatus = (v) => (v == null ? "unknown" : v >= 0.8 ? "good" : v >= 0.6 ? "warn" : "bad");
+
+/** A status pill: icon plus words, so state is never colour alone. */
+const pill = (status, text) => `<span class="pill p-${esc(status)}"><span aria-hidden="true">${STATUS_ICON[status] ?? "–"}</span> ${esc(text ?? STATUS_LABEL[status] ?? status)}</span>`;
+
+// charts.js
+// SVG charts as strings: stacked bars, lines, sparklines, a histogram, the testing pyramid, a
+// treemap and a score ring. Colours come from CSS variables (--s1…--s8 series, status tokens), so
+// light and dark both work. Every mark carries data-tip for the page's hover tooltip.
+
+/** Series colour by slot, in a fixed order (never cycled past eight: fold the rest into "other"). */
+const seriesVar = (i) => `var(--s${Math.min(8, i + 1)})`;
+
+/** Rounded "nice" maximum for an axis. */
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return ([1, 2, 2.5, 5].find((m) => m * p >= v) ?? 10) * p;
+}
+
+/** A legend: colour swatch plus name for each series. */
+const legend = (items) =>
+  `<div class="legend2">${items.map((it, i) => `<span><i style="background:${it.color ?? seriesVar(i)}"></i>${esc(it.label)}</span>`).join("")}</div>`;
+
+/**
+ * Bars per column, stacked by key. cols: [{label, values: {key: n}}]; keys in fixed order. Each
+ * segment is separated by a 2px surface gap and has a tooltip.
+ */
+function stackedBars(cols, keys, opts = {}) {
+  const W = opts.width ?? 720;
+  const H = opts.height ?? 200;
+  const pad = { l: 44, r: 8, t: 10, b: 24 };
+  const fmt = opts.fmt ?? fmtNum;
+  const color = opts.color ?? ((k) => seriesVar(keys.indexOf(k)));
+  const totals = cols.map((c) => keys.reduce((s, k) => s + (c.values[k] ?? 0), 0));
+  const max = niceMax(Math.max(0, ...totals));
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const bw = cols.length ? iw / cols.length : iw;
+  const barW = Math.max(2, Math.min(28, bw * 0.7));
+  const y = (v) => pad.t + ih - (v / max) * ih;
+  let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label ?? "Bar chart")}">`;
+  for (const f of [0, 0.5, 1]) out += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(max * f)}" y2="${y(max * f)}"/><text x="${pad.l - 6}" y="${y(max * f) + 4}" text-anchor="end">${esc(fmt(max * f))}</text>`;
+  const every = Math.max(1, Math.ceil(cols.length / 10));
+  cols.forEach((c, i) => {
+    const x = pad.l + i * bw + (bw - barW) / 2;
+    let acc = 0;
+    for (const k of keys) {
+      const v = c.values[k] ?? 0;
+      if (!v) continue;
+      const y1 = y(acc + v);
+      const h = Math.max(1, y(acc) - y1);
+      out += `<rect class="seg" x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${color(k)}" data-tip="${esc(`${c.label} · ${opts.keyLabel ? opts.keyLabel(k) : k}: ${fmt(v)}`)}"/>`;
+      acc += v;
+    }
+    if (i % every === 0) out += `<text x="${(x + barW / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(c.label)}</text>`;
+  });
+  return `${out}</svg>`;
+}
+
+/** One or more lines over time. series: [{label, points: [{at, v}]}], one y-axis. */
+function lineChart(series, opts = {}) {
+  const W = opts.width ?? 720;
+  const H = opts.height ?? 180;
+  const pad = { l: 52, r: 10, t: 10, b: 22 };
+  const fmt = opts.fmt ?? fmtNum;
+  const pts = series.flatMap((s) => s.points);
+  if (!pts.length) return `<p class="meta">${esc(opts.empty ?? "No samples yet.")}</p>`;
+  const from = opts.from ?? Math.min(...pts.map((p) => p.at));
+  const to = opts.to ?? Math.max(...pts.map((p) => p.at));
+  const max = opts.max ?? niceMax(Math.max(...pts.map((p) => p.v)));
+  const iw = W - pad.l - pad.r;
+  const ih = H - pad.t - pad.b;
+  const x = (t) => pad.l + (to > from ? ((t - from) / (to - from)) * iw : iw / 2);
+  const y = (v) => pad.t + ih - (Math.min(v, max) / max) * ih;
+  const xl = opts.xLabel ?? ((t) => new Date(t).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+  let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label ?? "Line chart")}">`;
+  for (const f of [0, 0.5, 1]) out += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(max * f)}" y2="${y(max * f)}"/><text x="${pad.l - 6}" y="${y(max * f) + 4}" text-anchor="end">${esc(fmt(max * f))}</text>`;
+  out += `<text x="${pad.l}" y="${H - 5}">${esc(xl(from))}</text><text x="${W - pad.r}" y="${H - 5}" text-anchor="end">${esc(xl(to))}</text>`;
+  series.forEach((s, i) => {
+    const c = s.color ?? seriesVar(i);
+    const sorted = [...s.points].sort((a, b) => a.at - b.at);
+    if (sorted.length > 1) out += `<polyline fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" points="${sorted.map((p) => `${x(p.at).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}"/>`;
+    const step = Math.max(1, Math.floor(sorted.length / 60));
+    sorted.forEach((p, j) => {
+      if (j % step && j !== sorted.length - 1) return;
+      out += `<circle cx="${x(p.at).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${sorted.length === 1 ? 4 : 2.5}" fill="${c}" stroke="var(--surface)" stroke-width="1.5"/><circle class="hit" cx="${x(p.at).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="9" data-tip="${esc(`${s.label} · ${xl(p.at)}: ${fmt(p.v)}`)}"/>`;
+    });
+  });
+  return `${out}</svg>`;
+}
+
+/** A tiny trend line for a tile. */
+function sparkline(values, opts = {}) {
+  const W = opts.width ?? 120;
+  const H = opts.height ?? 28;
+  const vs = values.filter((v) => v != null && Number.isFinite(v));
+  if (vs.length < 2) return "";
+  const max = Math.max(...vs);
+  const min = Math.min(0, ...vs);
+  const span = max - min || 1;
+  const pts = vs.map((v, i) => `${((i / (vs.length - 1)) * (W - 4) + 2).toFixed(1)},${(H - 2 - ((v - min) / span) * (H - 4)).toFixed(1)}`);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline fill="none" stroke="${opts.color ?? "var(--s1)"}" stroke-width="2" stroke-linejoin="round" points="${pts.join(" ")}"/></svg>`;
+}
+
+/** Vertical bars with a label under each: a histogram of buckets [{label, count}]. */
+function histogram(buckets, opts = {}) {
+  const W = opts.width ?? 420;
+  const H = opts.height ?? 150;
+  const max = niceMax(Math.max(0, ...buckets.map((b) => b.count)));
+  const bw = (W - 20) / Math.max(1, buckets.length);
+  let out = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label ?? "Histogram")}">`;
+  buckets.forEach((b, i) => {
+    const h = ((H - 40) * b.count) / max;
+    const x = 10 + i * bw + bw * 0.15;
+    out += `<rect class="seg" x="${x.toFixed(1)}" y="${(H - 24 - h).toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${Math.max(b.count ? 2 : 0, h).toFixed(1)}" rx="3" fill="${opts.color ?? "var(--s1)"}" data-tip="${esc(`${b.label}: ${b.count}`)}"/>`;
+    out += `<text x="${(x + bw * 0.35).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(b.label)}</text>`;
+    if (b.count) out += `<text class="val" x="${(x + bw * 0.35).toFixed(1)}" y="${(H - 28 - h).toFixed(1)}" text-anchor="middle">${b.count}</text>`;
+  });
+  return `${out}</svg>`;
+}
+
+/**
+ * The testing pyramid: one band per layer, end-to-end on top and unit at the base. Each band's
+ * width is its share of the tests, so a healthy suite looks like a pyramid and an inverted one
+ * like an ice-cream cone. Bands are coloured by coverage status and labelled in words.
+ */
+function pyramid(layers, opts = {}) {
+  const W = opts.width ?? 560;
+  const bandH = 64;
+  const gap = 6;
+  const order = ["e2e", "integration", "unit"];
+  const rows = order.map((k) => layers.find((l) => l.key === k) ?? { key: k, label: k, tests: 0 });
+  const total = rows.reduce((s, r) => s + r.tests, 0);
+  const H = rows.length * (bandH + gap) + 4;
+  const names = { e2e: "End-to-end", integration: "Integration", unit: "Unit" };
+  let out = `<svg class="pyr" viewBox="0 0 ${W} ${H}" role="img" aria-label="Testing pyramid by layer">`;
+  rows.forEach((r, i) => {
+    const share = total ? r.tests / total : 0;
+    const w = Math.max(120, share * (W - 8));
+    const x = (W - w) / 2;
+    const y = 2 + i * (bandH + gap);
+    const status = r.status ?? "unknown";
+    const cov = r.coverage == null ? "no coverage data" : `${Math.round(r.coverage * 100)}% covered`;
+    out += `<g class="band b-${esc(status)}" tabindex="0" role="button" data-action="drill" data-path="${esc(r.key)}" data-tip="${esc(`${names[r.key]}: ${r.tests} tests (${Math.round(share * 100)}%), ${cov}`)}">`;
+    out += `<rect x="${x.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${bandH}" rx="6"/>`;
+    out += `<text class="bl" x="${W / 2}" y="${y + 26}" text-anchor="middle">${esc(names[r.key])}</text>`;
+    out += `<text class="bs" x="${W / 2}" y="${y + 46}" text-anchor="middle">${esc(`${fmtNum(r.tests)} tests · ${Math.round(share * 100)}% · ${cov}`)}</text></g>`;
+  });
+  return `${out}</svg>`;
+}
+
+/** Squarified treemap layout: rectangles for items [{value}] filling w×h. */
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const out = [];
+  if (!total || w <= 0 || h <= 0) return out;
+  const scale = (w * h) / total;
+  const rest = items.filter((i) => i.value > 0).map((i) => ({ item: i, area: i.value * scale })).sort((a, b) => b.area - a.area);
+  let rx = x;
+  let ry = y;
+  let rw = w;
+  let rh = h;
+  while (rest.length) {
+    const side = Math.min(rw, rh);
+    const row = [rest.shift()];
+    const worst = (r) => {
+      const s = r.reduce((a, b) => a + b.area, 0);
+      const mx = Math.max(...r.map((q) => q.area));
+      const mn = Math.min(...r.map((q) => q.area));
+      return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+    };
+    while (rest.length && worst([...row, rest[0]]) <= worst(row)) row.push(rest.shift());
+    const s = row.reduce((a, b) => a + b.area, 0);
+    if (rw >= rh) {
+      const cw = s / rh;
+      let cy = ry;
+      for (const q of row) out.push({ item: q.item, x: rx, y: cy, w: cw, h: q.area / cw }), (cy += q.area / cw);
+      rx += cw;
+      rw -= cw;
+    } else {
+      const ch = s / rw;
+      let cx = rx;
+      for (const q of row) out.push({ item: q.item, x: cx, y: ry, w: q.area / ch, h: ch }), (cx += q.area / ch);
+      ry += ch;
+      rh -= ch;
+    }
+  }
+  return out;
+}
+
+/** A treemap of items [{key, label, value, status, tip}]; each cell drills into its key. */
+function treemap(items, opts = {}) {
+  const W = opts.width ?? 720;
+  const H = opts.height ?? 300;
+  const cells = squarify(items, 0, 0, W, H);
+  let out = `<svg class="tree" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label ?? "Treemap")}">`;
+  for (const c of cells) {
+    const it = c.item;
+    out += `<g class="cell b-${esc(it.status ?? "unknown")}" tabindex="0" role="button" data-action="drill" data-path="${esc(it.key)}" data-tip="${esc(it.tip ?? `${it.label}: ${it.value}`)}">`;
+    out += `<rect x="${(c.x + 1).toFixed(1)}" y="${(c.y + 1).toFixed(1)}" width="${Math.max(0, c.w - 2).toFixed(1)}" height="${Math.max(0, c.h - 2).toFixed(1)}" rx="4"/>`;
+    if (c.w > 70 && c.h > 34) {
+      const max = Math.floor(c.w / 7.2);
+      const label = it.label.length > max ? `…${it.label.slice(-(max - 1))}` : it.label;
+      out += `<text class="bl" x="${(c.x + 8).toFixed(1)}" y="${(c.y + 19).toFixed(1)}">${esc(label)}</text><text class="bs" x="${(c.x + 8).toFixed(1)}" y="${(c.y + 34).toFixed(1)}">${esc(it.sub ?? String(it.value))}</text>`;
+    }
+    out += "</g>";
+  }
+  return `${out}</svg>`;
+}
+
+/** A score from 0 to 100 as a ring, with the number in the middle. */
+function ring(score, opts = {}) {
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  const v = score == null ? 0 : Math.max(0, Math.min(100, score));
+  const status = score == null ? "unknown" : v >= 80 ? "good" : v >= 50 ? "warn" : "bad";
+  return `<svg class="ring r-${status}" viewBox="0 0 100 100" role="img" aria-label="${esc(opts.label ?? "Score")} ${score == null ? "not measured" : `${Math.round(v)} of 100`}"><circle cx="50" cy="50" r="${r}" class="track"/><circle cx="50" cy="50" r="${r}" class="arc" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/><text x="50" y="57" text-anchor="middle">${score == null ? "–" : Math.round(v)}</text></svg>`;
+}
+
+/** Horizontal bars as HTML rows: [{label, value, sub, color, action, path}]. */
+function hbars(rows, opts = {}) {
+  const max = Math.max(1e-9, ...rows.map((r) => r.value));
+  const fmt = opts.fmt ?? fmtNum;
+  return `<ul class="hbars">${rows
+    .map(
+      (r, i) =>
+        `<li${r.action ? ` data-action="${esc(r.action)}" data-path="${esc(r.path ?? r.label)}" tabindex="0" role="button"` : ""}><div class="hb-top"><span class="hb-l">${esc(r.label)}</span><span class="stamp">${esc(r.sub ?? fmt(r.value))}</span></div><div class="hb"><i style="width:${((100 * r.value) / max).toFixed(1)}%;background:${r.color ?? seriesVar(opts.colorIndex ?? i)}"></i></div></li>`,
+    )
+    .join("")}</ul>`;
+}
+
+// views.js
+// One renderer per dashboard tab: data from Morpheus's tools in, HTML out. No DOM access here, so
+// every view can be tested with plain data. Interactive bits carry data-action attributes that
+// the page wires up: drill, crumb, group, sort, category, tab.
+
+
+/** Task categories in a fixed colour order; the last two share the muted "other" colour. */
+const CATEGORY_ORDER = ["feature", "bugfix", "test", "refactor", "docs", "ops", "review", "explore", "chore", "interrupt"];
+const categoryColor = (c) => {
+  const i = CATEGORY_ORDER.indexOf(c);
+  return i >= 0 && i < 8 ? `var(--s${i + 1})` : "var(--muted)";
+};
+const SCOPE_ORDER = ["claude", "mcp", "hook", "tools", "wit"];
+const SCOPE_LABEL = { claude: "Claude Code", mcp: "MCP servers", hook: "Hooks", tools: "Commands it ran", wit: "Wit", machine: "Whole machine" };
+const scopeColor = (s) => (s === "machine" ? "var(--muted)" : `var(--s${SCOPE_ORDER.indexOf(s) + 1})`);
+
+const tile = (label, value, sub = "", status = null, extra = "") =>
+  `<div class="kpi${status ? ` ${status}` : ""}"><span>${esc(label)}</span><b>${esc(value)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}${extra}</div>`;
+const section = (eyebrow, title, body, note = "") =>
+  `<section><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(title)}</h2>${note ? `<p class="note">${note}</p>` : ""}${body}</section>`;
+const empty = (text) => `<div class="notice"><p>${text}</p></div>`;
+
+// ---------- Health ----------
+function renderHealth(d) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const stages = d.stages
+    .map(
+      (s) => `<article class="stage s-${esc(s.status)}">
+      <header><h3>${esc(s.label)}</h3>${pill(s.status)}</header>
+      <p class="q">${esc(s.question)}</p>
+      <ul>${s.metrics.map((m) => `<li><span>${esc(m.label)}</span><b>${esc(fmtUnit(m.value, m.unit))}</b><small>target ${esc(m.target)}</small></li>`).join("")}</ul>
+      ${s.hint ? `<p class="hint">${esc(s.hint)}</p>` : ""}
+    </article>`,
+    )
+    .join("");
+  const dora = d.dora;
+  const doraTile = (label, value, band, trend = []) =>
+    `<button type="button" class="kpi kbtn ${bandStatus(band)}" data-action="tab" data-path="delivery"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(band ? `DORA ${BAND_LABEL[band]}` : "no data yet")}</small>${sparkline(trend)}</button>`;
+  const p = d.pyramid;
+  const improvements = (d.improvements ?? [])
+    .map((i) => `<li><b>${esc(i.title)}</b><span class="meta"> · ROI ${esc(i.roi)}</span><br><span class="meta">${esc(i.how)}</span></li>`)
+    .join("");
+  return `<div class="hero">${ring(d.score, { label: "SDLC health" })}<div><div class="eyebrow">SDLC health · ${d.measured} of ${d.stages.length} stages measured</div><h2>${d.score == null ? "Not enough data yet" : d.score >= 80 ? "Healthy" : d.score >= 50 ? "Some stages need a look" : "Several stages need attention"}</h2><p class="note">Each stage is as healthy as its worst measured number. Stages with no data say how to turn them on.</p></div></div>
+  <div class="kpis">
+    ${doraTile("Deploys", dora.deploys ? fmtUnit(dora.frequency.perWeek, "perWeek") : "–", dora.frequency.band, (dora.weeks ?? []).map((w) => w.deploys))}
+    ${doraTile("Lead time", fmtMs(dora.leadTime.p50), dora.leadTime.band, (dora.weeks ?? []).map((w) => w.leadP50))}
+    ${doraTile("Change failure rate", fmtPct(dora.failureRate.rate), dora.failureRate.band)}
+    ${doraTile("Time to restore", fmtMs(dora.restore.p50), dora.restore.band)}
+  </div>
+  <div class="stages">${stages}</div>
+  <div class="kpis">
+    ${tile("Tasks", fmtNum(d.tokens.tasks), `${fmtNum(d.tokens.perTask)} new tokens each`)}
+    ${tile("Estimated cost", fmtMoney(d.tokens.cost), `${fmtMoney(d.tokens.costPerTask)} a task`)}
+    ${tile("Cache hit rate", fmtPct(d.tokens.cacheHit), "of input read from cache", d.tokens.cacheHit == null ? null : d.tokens.cacheHit >= 0.7 ? "good" : "warn")}
+    ${tile("AI co-authored commits", fmtPct(d.ai.share), `${fmtNum(d.ai.commits)} commits`)}
+    ${tile("Tests", fmtNum(p.tests), p.coverage ? `${fmtPct(p.coverage.lines)} lines covered` : "no coverage report", p.failed ? "bad" : null)}
+  </div>
+  ${improvements ? section("Ranked by return on effort", "Next improvements to your Claude Code setup", `<ol class="imps">${improvements}</ol>`) : ""}`;
+}
+
+// ---------- Delivery ----------
+function renderDelivery(d) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const weeks = d.weeks.map((w) => ({ label: fmtDay(fmtDate(w.week)), values: { ok: w.deploys - w.failed, failed: w.failed } }));
+  const ci = d.ci;
+  const recent = d.recent
+    .map(
+      (r) => `<tr><td>${esc(fmtDate(r.at))}</td><td class="mono">${esc(r.sha ?? r.id)}</td><td>${esc(r.subject ?? "")}${r.ai ? ' <span class="tag t-ai">AI</span>' : ""}</td><td class="num">${esc(fmtMs(r.leadMs))}</td><td>${r.failed ? pill("bad", `${r.failed.cause}${r.failed.restoreMs != null ? ` · fixed in ${fmtMs(r.failed.restoreMs)}` : ""}`) : r.status === "pending" ? pill("unknown", "pending") : pill("good", "ok")}</td></tr>`,
+    )
+    .join("");
+  const card = (label, value, band, sub) =>
+    `<div class="kpi ${bandStatus(band)}"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(band ? `${BAND_LABEL[band]} · ${sub}` : sub)}</small></div>`;
+  return `<div class="kpis">
+    ${card("Deployment frequency", d.deploys ? fmtUnit(d.frequency.perWeek, "perWeek") : "–", d.frequency.band, `${d.deploys} deploys`)}
+    ${card("Lead time for changes", fmtMs(d.leadTime.p50), d.leadTime.band, `p90 ${fmtMs(d.leadTime.p90)}`)}
+    ${card("Change failure rate", fmtPct(d.failureRate.rate), d.failureRate.band, `${d.failureRate.failed} failed`)}
+    ${card("Time to restore", fmtMs(d.restore.p50), d.restore.band, `${d.restore.samples} restores`)}
+  </div>
+  <p class="note">Deploys come from <b>${esc(d.source === "gh" ? "GitHub" : "git")}</b> (rule <code>${esc(d.rule)}</code>, over ${esc(d.range)}). A deploy fails when a revert of its change, a hotfix or rollback, a failed status or an incident follows it. Bands follow the DORA State of DevOps thresholds.</p>
+  ${section("Per week", "Deploys", `${legend([{ label: "succeeded", color: "var(--s1)" }, { label: "failed", color: "var(--s8)" }])}<div class="chart">${stackedBars(weeks, ["ok", "failed"], { label: "Deploys per week", color: (k) => (k === "ok" ? "var(--s1)" : "var(--s8)"), keyLabel: (k) => (k === "ok" ? "succeeded" : "failed") })}</div>`)}
+  <div class="grid2">
+    ${section("Distribution", "Lead time for changes", `<div class="chart">${histogram(d.leadHistogram, { label: "Lead time distribution" })}</div>`)}
+    ${section("GitHub Actions", "CI", ci.runs ? `<div class="kpis">${tile("Runs passing", fmtPct(ci.passRate), `${ci.runs} runs`, ci.passRate >= 0.9 ? "good" : ci.passRate >= 0.75 ? "warn" : "bad")}${tile("Median run", fmtMs(ci.p50))}</div>${hbars(ci.workflows.slice(0, 6).map((w) => ({ label: w.workflow, value: w.runs ? w.failed / w.runs : 0, sub: `${w.failed}/${w.runs} failed · p50 ${fmtMs(w.p50)}`, color: "var(--s8)" })), { fmt: fmtPct })}` : empty('No CI runs read. Add <code>"gh": true</code> to <code>.claude/wit.json</code> to read GitHub Actions with the <code>gh</code> CLI.'))}
+  </div>
+  ${section("Newest first", "Recent deploys", d.recent.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Change</th><th>What</th><th class="num">Lead time</th><th>Result</th></tr></thead><tbody>${recent}</tbody></table></div>` : empty("No deploys in this range."))}`;
+}
+
+// ---------- Tests ----------
+const LAYER_NAME = { unit: "Unit", integration: "Integration", e2e: "End-to-end" };
+const nodeStatus = (n) => (n.failed ? "bad" : covStatus(n.coverage?.lines ?? null));
+const covText = (n) => (n.coverage ? `${fmtPct(n.coverage.lines)} lines${n.coverage.branches != null ? ` · ${fmtPct(n.coverage.branches)} branches` : ""}` : "–");
+
+function renderTests(d, state = {}) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const grouping = d.grouping;
+  const n = d.node;
+  const top = d.pyramid;
+  const crumbs = [`<button type="button" class="crumb" data-action="crumb" data-path="">${grouping === "feature" ? "All features" : "Pyramid"}</button>`]
+    .concat(d.path.map((seg, i) => `<button type="button" class="crumb" data-action="crumb" data-path="${esc(d.path.slice(0, i + 1).join("|"))}">${esc(i === 0 && grouping === "layer" ? (LAYER_NAME[seg] ?? seg) : seg)}</button>`))
+    .join('<span aria-hidden="true">›</span>');
+  const level = d.levels[d.path.length];
+  const kids = n.children ?? [];
+  const pathOf = (k) => [...d.path, k].join("|");
+  let body;
+  if (!d.path.length && grouping === "layer")
+    body = `<div class="pyr-wrap"><div class="chart">${pyramid(kids.map((c) => ({ key: c.key, tests: c.tests, coverage: c.coverage?.lines ?? null, status: nodeStatus(c) })))}</div>
+      <div class="pyr-side">${kids.map((c) => `<button type="button" class="kpi kbtn ${nodeStatus(c)}" data-action="drill" data-path="${esc(c.key)}"><span>${esc(LAYER_NAME[c.key] ?? c.key)}</span><b>${fmtNum(c.tests)}</b><small>${esc(`${covText(c)}${c.coverageScope ? ` (${c.coverageScope})` : ""}`)}</small><small>${esc(`${c.passed} passed · ${c.failed} failed · ${c.notRun} not run`)}</small></button>`).join("")}</div></div>`;
+  else if (level === "test")
+    body = `<div class="ltbl"><table><thead><tr><th>Test</th><th>Line</th><th>Result</th><th class="num">Time</th><th>Tags</th></tr></thead><tbody>${kids.map((c) => `<tr><td>${esc(c.label)}${c.leaf.flaky ? ' <span class="tag t-warn">flaky</span>' : ""}</td><td class="mono">${c.leaf.line || "–"}</td><td>${c.leaf.status ? pill(c.leaf.status === "passed" ? "good" : c.leaf.status === "failed" ? "bad" : "unknown", c.leaf.status) : pill("unknown", "not run")}</td><td class="num">${esc(fmtMs(c.leaf.durationMs))}</td><td>${c.leaf.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")}</td></tr>`).join("")}</tbody></table></div>`;
+  else
+    body = `${kids.length > 1 ? `<div class="chart">${treemap(kids.filter((c) => c.tests).slice(0, 60).map((c) => ({ key: pathOf(c.key), label: c.label, value: c.tests, status: nodeStatus(c), sub: `${c.tests} tests · ${c.coverage ? fmtPct(c.coverage.lines) : "no cov."}`, tip: `${c.label}: ${c.tests} tests, ${covText(c)}` })), { label: `Tests by ${level}` })}</div>` : ""}
+    <div class="ltbl"><table><thead><tr><th>${esc(level)}</th><th class="num">Tests</th><th class="num">Passed</th><th class="num">Failed</th><th class="num">Not run</th><th class="num">Flaky</th><th>Coverage</th><th class="num">Time</th></tr></thead><tbody>${kids.map((c) => `<tr data-action="drill" data-path="${esc(pathOf(c.key))}" tabindex="0"><td>${esc(c.label)}</td><td class="num">${c.tests}</td><td class="num">${c.passed}</td><td class="num">${c.failed}</td><td class="num">${c.notRun}</td><td class="num">${c.flaky}</td><td>${esc(covText(c))}</td><td class="num">${esc(fmtMs(c.durationMs))}</td></tr>`).join("")}</tbody></table></div>`;
+  const hist = d.history;
+  const cov = hist.coverage.map((c) => ({ at: c.at, v: c.lines ?? 0 }));
+  const unit = top.children?.find((c) => c.key === "unit")?.tests ?? 0;
+  const shape = top.tests ? (unit / top.tests >= 0.5 ? "pyramid" : "inverted") : null;
+  return `<div class="bar"><div class="seg" role="group" aria-label="Group tests by"><button type="button" data-action="group" data-path="layer" aria-pressed="${grouping === "layer"}">By layer</button><button type="button" data-action="group" data-path="feature" aria-pressed="${grouping === "feature"}">By feature</button></div><nav class="crumbs" aria-label="Where you are">${crumbs}</nav></div>
+  <div class="kpis">
+    ${tile("Tests here", fmtNum(n.tests), `${n.passed} passed · ${n.failed} failed · ${n.skipped} skipped`, n.failed ? "bad" : null)}
+    ${tile("Coverage", n.coverage ? fmtPct(n.coverage.lines) : "–", n.coverage ? `${fmtNum(n.coverage.linesHit)}/${fmtNum(n.coverage.linesTotal)} lines${n.coverageScope ? ` · ${n.coverageScope}` : ""}` : "no coverage report", covStatus(n.coverage?.lines ?? null))}
+    ${tile("Branch coverage", n.coverage?.branches != null ? fmtPct(n.coverage.branches) : "–", n.coverage?.branchesTotal ? `${fmtNum(n.coverage.branchesHit)}/${fmtNum(n.coverage.branchesTotal)} branches` : "")}
+    ${tile("Flaky", fmtNum(n.flaky), "passed and failed in recent runs", n.flaky ? "warn" : null)}
+    ${tile("Time", fmtMs(n.durationMs), "latest results")}
+    ${shape ? tile("Shape", shape === "pyramid" ? "Pyramid" : "Inverted", `${fmtPct(unit / top.tests)} unit tests`, shape === "pyramid" ? "good" : "warn") : ""}
+  </div>
+  ${body}
+  <div class="grid2">
+    ${section("Coverage over time", "Line coverage", `<div class="chart">${lineChart([{ label: "line coverage", points: cov }], { fmt: (v) => fmtPct(v), max: 1, xLabel: fmtDate, empty: "No coverage reports read yet." })}</div>`)}
+    ${section("Each recorded run", "Tests and failures", `<div class="chart">${lineChart([{ label: "tests", points: hist.runs.map((r) => ({ at: r.at, v: r.tests })) }, { label: "failed", points: hist.runs.map((r) => ({ at: r.at, v: r.failed })), color: "var(--s8)" }], { xLabel: fmtDate, empty: "No JUnit results read yet." })}</div>`)}
+  </div>
+  <div class="grid2">
+    ${section("Slowest", "Slowest tests", d.slowest.length ? hbars(d.slowest.map((t) => ({ label: t.name, value: t.durationMs, sub: fmtMs(t.durationMs) }))) : empty("Needs JUnit results with times."))}
+    ${section("Unstable", "Failing and flaky", d.failing.length + d.flaky.length ? `<ul class="plain">${[...d.failing.map((t) => `<li>${pill("bad", "failing")} ${esc(t.name)} <span class="meta">${esc(t.file)}</span></li>`), ...d.flaky.map((t) => `<li>${pill("warn", "flaky")} ${esc(t.name)} <span class="meta">${esc(t.file)}</span></li>`)].join("")}</ul>` : empty("None in the latest results."))}
+  </div>
+  ${section("Sources", "Reports read", d.reports.length ? `<ul class="plain">${d.reports.map((r) => `<li><code>${esc(r.path)}</code> <span class="meta">${esc(r.framework)} · ${r.versions} versions · ${esc(fmtAgo(r.at))}${r.layer ? ` · ${esc(r.layer)} layer` : ""}</span></li>`).join("")}</ul>` : "", 'Tests are found in the source and joined with JUnit XML results; coverage comes from lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON or Go profiles your test runs write. Layers come from folder and file conventions, or <code>"layers"</code> in <code>.claude/wit.json</code>.')}`;
+}
+
+// ---------- Tokens & cost ----------
+function renderTokens(d, state = {}) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const t = d.totals;
+  const cats = CATEGORY_ORDER.filter((c) => d.byCategory.some((b) => b.category === c));
+  const days = d.days.map((x) => ({ label: fmtDay(x.day), values: Object.fromEntries(cats.map((c) => [c, x[c] ?? 0])) }));
+  const sortBtn = (k, label) => `<button type="button" data-action="sort" data-path="${k}" aria-pressed="${(state.sort ?? "tokens") === k}">${label}</button>`;
+  const rows = d.list
+    .map(
+      (x) => `<tr><td>${esc(new Date(x.at).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))}</td><td><span class="tag" style="border-left:3px solid ${categoryColor(x.category)}">${esc(x.category)}</span></td><td class="prompt"><details><summary>${esc(x.prompt)}</summary><div class="meta">${esc(`${x.toolCalls} tool calls (${x.toolErrors} failed) · ${x.agents} agents · skills: ${x.skills.join(", ") || "none"} · ${Object.entries(x.models).map(([m, v]) => `${m} ${fmtNum(v)}`).join(", ")}`)}</div>${x.files.length ? `<div class="meta">Edited: ${x.files.map((f) => `<code>${esc(f)}</code>`).join(" ")}</div>` : ""}</details>${x.corrected ? ' <span class="tag t-warn">corrected next</span>' : ""}</td><td class="num">${fmtNum(x.tokensNew)}</td><td class="num">${fmtNum(x.tokensCached)}</td><td class="num">${fmtMoney(x.cost)}</td><td class="num">${fmtMs(x.durationMs)}</td></tr>`,
+    )
+    .join("");
+  return `<div class="kpis">
+    ${tile("New tokens", fmtNum(t.tokensNew), `${fmtNum(t.tasks)} tasks`)}
+    ${tile("Cached reads", fmtNum(t.tokensCached), `${fmtPct(t.cacheHit)} of input from cache`)}
+    ${tile("Estimated cost", fmtMoney(t.cost), "list prices, an estimate")}
+    ${tile("Per task", fmtNum(t.perTask), `${fmtMoney(t.costPerTask)} each`)}
+    ${tile("Corrected tasks", fmtPct(t.tasks ? t.corrected / t.tasks : null), `${t.corrected} followed by a correction`, t.tasks ? (t.corrected / t.tasks <= 0.1 ? "good" : "warn") : null)}
+  </div>
+  ${section("New tokens per day, by task category", "Where the tokens go", cats.length ? `${legend(cats.map((c) => ({ label: c, color: categoryColor(c) })))}<div class="chart">${stackedBars(days, cats, { label: "New tokens per day by category", color: categoryColor })}</div>` : empty("No tasks in this range."))}
+  <div class="grid2">
+    ${section("Tokens and cost by task category", "By category", hbars(d.byCategory.map((c) => ({ label: c.category, value: c.tokensNew, sub: `${fmtNum(c.tokensNew)} · ${fmtMoney(c.cost)} · ${c.tasks} tasks · ${fmtNum(c.tokensNew / c.tasks)} each`, color: categoryColor(c.category), action: "category", path: c.category }))))}
+    ${section("Every reply in range", "By model", hbars(d.byModel.map((m, i) => ({ label: m.model, value: m.tokensNew, sub: `${fmtNum(m.tokensNew)} · ${fmtMoney(m.cost)}`, color: `var(--s${(i % 8) + 1})` }))))}
+  </div>
+  ${section(`${d.count} tasks${state.category ? ` in ${state.category}` : ""} · a task is one prompt and everything it set off`, "Tasks", `<div class="bar"><div class="seg" role="group" aria-label="Sort tasks by">${sortBtn("tokens", "Tokens")}${sortBtn("cost", "Cost")}${sortBtn("duration", "Time")}${sortBtn("recent", "Newest")}</div>${state.category ? `<div class="scope"><button type="button" data-action="category" data-path="">${esc(state.category)}</button></div>` : ""}</div>${d.list.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Category</th><th>Prompt</th><th class="num">New</th><th class="num">Cached</th><th class="num">Cost</th><th class="num">Time</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No tasks.")}`)}`;
+}
+
+// ---------- AI effectiveness ----------
+function renderAI(q, tasks) {
+  if (!q) return empty("Waiting for the first numbers…");
+  const r = q.rework;
+  const e = q.efficiency;
+  const p = q.process;
+  const weeks = q.weeks.map((w) => ({ label: fmtDay(fmtDate(w.week)), values: { ai: w.aiCommits, other: w.commits - w.aiCommits } }));
+  const cats = (tasks?.byCategory ?? []).filter((c) => c.tasks);
+  return `<div class="kpis">
+    ${tile("AI co-authored commits", fmtPct(q.ai.share), `${q.ai.commits} of ${q.commits} commits · ${fmtPct(q.ai.lineShare)} of lines`)}
+    ${tile("AI lines redone in 14 days", fmtPct(r.ai.rate, 1), r.human.rate != null ? `others: ${fmtPct(r.human.rate, 1)}` : `${fmtNum(r.ai.reworked)} of ${fmtNum(r.ai.added)} lines`, r.ai.rate == null ? null : r.ai.rate <= 0.1 ? "good" : r.ai.rate <= 0.2 ? "warn" : "bad")}
+    ${tile("Tokens per AI commit", fmtNum(e.tokensPerCommit), `${fmtMoney(e.costPerCommit)} each`)}
+    ${tile("Tokens per AI line", fmtNum(e.tokensPerLine), "new tokens ÷ lines added")}
+    ${tile("Cache hit rate", fmtPct(e.cacheHit), "higher is cheaper", e.cacheHit == null ? null : e.cacheHit >= 0.7 ? "good" : "warn")}
+  </div>
+  <div class="kpis">
+    ${tile("Corrections", fmtPct(p.correctionRate), `${p.corrections ?? 0} prompts pushed back`, p.correctionRate == null ? null : p.correctionRate <= 0.1 ? "good" : "warn")}
+    ${tile("Interrupts", fmtNum(p.interrupts), "you stopped Claude mid-task")}
+    ${tile("Permission denials", fmtNum(p.denials), "tool calls you turned down")}
+    ${tile("Compactions a session", p.compactionsPerSession == null ? "–" : p.compactionsPerSession.toFixed(2), `${p.compactions} in ${p.sessions} sessions`, p.compactionsPerSession == null ? null : p.compactionsPerSession <= 0.5 ? "good" : "warn")}
+    ${tile("Tool calls failing", fmtPct(p.toolErrorRate, 1), `${fmtNum(p.toolCalls)} calls`, p.toolErrorRate == null ? null : p.toolErrorRate <= 0.05 ? "good" : "warn")}
+  </div>
+  ${section("Commits per week", "How much Claude writes", `${legend([{ label: "Claude co-authored", color: "var(--s7)" }, { label: "other", color: "var(--s1)" }])}<div class="chart">${stackedBars(weeks, ["ai", "other"], { label: "Commits per week", color: (k) => (k === "ai" ? "var(--s7)" : "var(--s1)"), keyLabel: (k) => (k === "ai" ? "Claude co-authored" : "other") })}</div>`, "A commit counts as Claude's when it carries a <code>Co-Authored-By: Claude</code> trailer or Claude Code's footer. Redone lines: lines later commits removed from the same file within 14 days, at most the lines added (an estimate).")}
+  ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;
+}
+
+// ---------- Quality ----------
+function renderQuality(q) {
+  if (!q) return empty("Waiting for the first numbers…");
+  const t = q.tests;
+  const c = q.changedCoverage;
+  return `<div class="kpis">
+    ${tile("Changed code covered", fmtPct(c.lines), `${c.measured} of ${c.files} changed files measured`, covStatus(c.lines))}
+    ${tile("Test lines per code line", t.all.ratio == null ? "–" : t.all.ratio.toFixed(2), `${fmtNum(t.all.test)} test · ${fmtNum(t.all.src)} code lines added`, t.all.ratio == null ? null : t.all.ratio >= 0.5 ? "good" : t.all.ratio >= 0.25 ? "warn" : "bad")}
+    ${tile("…in AI commits", t.ai.ratio == null ? "–" : t.ai.ratio.toFixed(2), `${fmtNum(t.ai.test)} test · ${fmtNum(t.ai.src)} code`)}
+    ${tile("Tool calls failing", fmtPct(q.process.toolErrorRate, 1), "edits, commands and reads that errored")}
+  </div>
+  <div class="grid2">
+    ${section("Changed often, with the most churn", "Hotspots", q.hotspots.length ? `<div class="ltbl"><table><thead><tr><th>File</th><th class="num">Commits</th><th class="num">Churn</th><th class="num">Lines now</th><th class="num">By Claude</th></tr></thead><tbody>${q.hotspots.map((h) => `<tr><td class="mono">${esc(h.path)}</td><td class="num">${h.commits}</td><td class="num">${fmtNum(h.churn)}</td><td class="num">${fmtNum(h.lines)}</td><td class="num">${h.aiCommits}</td></tr>`).join("")}</tbody></table></div>` : empty("No commits in this range."))}
+    ${section("Changed in this range, least covered first", "Coverage of changed code", c.lowest.length ? hbars(c.lowest.map((l) => ({ label: l.path, value: l.lines, sub: `${fmtPct(l.lines)} of ${fmtNum(l.linesTotal)} lines`, color: l.lines >= 0.8 ? "var(--ok)" : l.lines >= 0.6 ? "var(--part)" : "var(--miss)" })), { fmt: fmtPct }) : empty("Needs a coverage report that includes the files that changed."))}
+  </div>`;
+}
+
+// ---------- Resources ----------
+function renderResources(d) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const m = d.machine;
+  const now = d.now;
+  const scopes = SCOPE_ORDER.filter((s) => d.memory[s]?.some((p) => p.v > 0));
+  const lines = (key, fmt) => {
+    const series = [...scopes, "machine"].map((s) => ({ label: SCOPE_LABEL[s], points: d[key][s] ?? [], color: scopeColor(s) }));
+    return `${legend(series.map((s) => ({ label: s.label, color: s.color })))}<div class="chart">${lineChart(series, { fmt, label: key })}</div>`;
+  };
+  const latest = d.disk.latest;
+  const diskRows = Object.entries(latest).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const cmd = d.commands;
+  const cmdTile = (label, k) => tile(label, fmtMs(k.p50), `${k.runs} runs · ${k.failed} failed · p95 ${fmtMs(k.p95)} · ${fmtMs(k.totalMs)} in all`, k.runs && k.failed / k.runs > 0.5 ? "warn" : null);
+  return `<p class="note">Sampled ${esc(fmtAgo(d.sampledAt))}. CPU is percent of one core (so it can pass 100% on several); the machine line is load across all ${m.cores ?? "?"} cores.</p>
+  <div class="kpis">
+    ${SCOPE_ORDER.map((s) => tile(SCOPE_LABEL[s], now[s] ? fmtBytes(now[s].rss) : "–", now[s] ? `${now[s].cpu.toFixed(1)}% CPU · ${now[s].procs} processes · peak ${fmtBytes(d.peak[s])}` : "not running")).join("")}
+    ${tile("Machine", m.now ? `${Math.round(m.now.cpu)}% load` : "–", m.now && m.memTotal ? `${fmtBytes(m.now.rss)} of ${fmtBytes(m.memTotal)} memory` : "")}
+    ${tile("Free disk", fmtBytes(m.diskFree), m.diskTotal ? `of ${fmtBytes(m.diskTotal)}` : "", m.diskFree != null && m.diskTotal ? (m.diskFree / m.diskTotal < 0.1 ? "bad" : m.diskFree / m.diskTotal < 0.2 ? "warn" : null) : null)}
+  </div>
+  ${section("Resident memory", "Memory", lines("memory", fmtBytes))}
+  ${section("Percent of one core", "CPU", lines("cpu", (v) => `${Math.round(v)}%`))}
+  <div class="grid2">
+    ${section(`Measured ${fmtAgo(d.disk.at)}`, "Disk footprint", diskRows.length ? hbars(diskRows.map(([k, v], i) => ({ label: k, value: v, sub: fmtBytes(v), color: `var(--s${(i % 8) + 1})` })), { fmt: fmtBytes }) : empty("Not measured yet."))}
+    ${section("Commands Claude ran", "Test and build runs", `<div class="kpis">${cmdTile("Test runs (median)", cmd.test)}${cmdTile("Builds (median)", cmd.build)}</div>${cmd.recent.length ? `<ul class="plain">${cmd.recent.slice(0, 12).map((r) => `<li>${pill(r.outcome === "error" ? "bad" : "good", r.kind)} <code>${esc(r.command)}</code> <span class="meta">${esc(fmtMs(r.durationMs))}${r.peakRss ? ` · peak ${esc(fmtBytes(r.peakRss))}` : ""} · ${esc(fmtAgo(r.at))}</span></li>`).join("")}</ul>` : ""}`)}
+  </div>`;
+}
+
+/** The dashboard's tabs, in order, with the tools each one reads. */
+const TABS = [
+  { key: "health", label: "Health", tools: ["morpheus_health"] },
+  { key: "delivery", label: "Delivery", tools: ["morpheus_dora"] },
+  { key: "tests", label: "Tests", tools: ["morpheus_tests"] },
+  { key: "tokens", label: "Tokens & cost", tools: ["morpheus_tasks"] },
+  { key: "ai", label: "AI effectiveness", tools: ["morpheus_quality", "morpheus_tasks"] },
+  { key: "quality", label: "Quality", tools: ["morpheus_quality"] },
+  { key: "resources", label: "Resources", tools: ["morpheus_resources"] },
+  { key: "process", label: "Hooks & agents", tools: [] },
+];
+
+/** The tab a URL hash names, else the first. */
+function tabFromHash(hash) {
+  const k = String(hash ?? "").replace(/^#/, "").split("/")[0];
+  return TABS.some((t) => t.key === k) ? k : k === "live" ? "process" : "health";
+}
+
+return { esc, fmtMs, fmtNum, fmtPct, fmtBytes, fmtMoney, fmtAgo, fmtDate, fmtDay, fmtUnit, STATUS_LABEL, STATUS_ICON, BAND_LABEL, bandStatus, covStatus, pill, seriesVar, niceMax, legend, stackedBars, lineChart, sparkline, histogram, pyramid, squarify, treemap, ring, hbars, CATEGORY_ORDER, categoryColor, SCOPE_ORDER, SCOPE_LABEL, renderHealth, renderDelivery, renderTests, renderTokens, renderAI, renderQuality, renderResources, TABS, tabFromHash };
+})();
+</script>
 <script>
 (() => {
 const SERVER = "host:morpheus";
@@ -366,6 +1011,10 @@ const state = {
   tl: null, tlSession: null, tlRange: store.get("morpheus-tl-range", "1h"),
   cov: null, covFilter: store.get("morpheus-cov", "all"),
   project: store.get("morpheus-project", "") || null, standalone: false,
+  tab: W.tabFromHash(location.hash),
+  tests: { grouping: store.get("wit-tests-grouping", "layer"), path: "" },
+  tasks: { sort: store.get("wit-tasks-sort", "tokens"), category: null },
+  sdlc: {},
 };
 
 // ---------- formatting ----------
@@ -448,9 +1097,85 @@ function watch(tool, input, onData, section) {
     } else handleError(ev.error, section);
   }, { refetchInterval: 30_000, cache: { staleTime: 25_000, gcTime: 600_000 } });
 }
+// ---------- tabs ----------
+const LEDE = {
+  health: ["SDLC health", "How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time."],
+  delivery: ["Delivery", "The four DORA metrics: how often you ship, how fast a change gets out, how often a deploy needs fixing and how fast it is fixed."],
+  tests: ["Testing pyramid", "Every test by layer, module, file and class, or by feature, with results and coverage at each level. Click a layer or a box to zoom in; use the trail to zoom out."],
+  tokens: ["Tokens & cost", "Tokens and estimated cost in total, by kind of task and for each task you gave Claude."],
+  ai: ["AI effectiveness", "Is Claude's help paying off: how much it writes, how much of that sticks, what it costs per change, and how often you have to step in."],
+  quality: ["Code quality", "Coverage of the code that changed, how much test code comes with each change, and the files that churn most."],
+  resources: ["Resources", "CPU, memory and disk used by Claude Code, its MCP servers, hooks and commands, the machine and this project."],
+  process: ["Hooks, skills and agents", "Every hook, skill and agent run across this project's Claude Code sessions: how long each took, what it was working on, whether it helped, and where the tokens went."],
+};
+function showTab(tab) {
+  state.tab = tab;
+  for (const a of document.querySelectorAll("#tabbar a")) if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  for (const p of document.querySelectorAll(".tabpanel")) p.hidden = p.dataset.tab !== tab;
+  $("#tab-title").textContent = LEDE[tab][0];
+  $("#tab-lede").textContent = LEDE[tab][1];
+  subscribe();
+}
+window.addEventListener("hashchange", () => showTab(W.tabFromHash(location.hash)));
+function renderSdlc() {
+  const d = state.sdlc;
+  const views = {
+    health: () => W.renderHealth(d.morpheus_health),
+    delivery: () => W.renderDelivery(d.morpheus_dora),
+    tests: () => W.renderTests(d.morpheus_tests, state.tests),
+    tokens: () => W.renderTokens(d.morpheus_tasks, state.tasks),
+    ai: () => W.renderAI(d.morpheus_quality, d.morpheus_tasks),
+    quality: () => W.renderQuality(d.morpheus_quality),
+    resources: () => W.renderResources(d.morpheus_resources),
+  };
+  const el = document.getElementById(`v-${state.tab}`);
+  if (el && views[state.tab]) {
+    const open = [...el.querySelectorAll("details[open]")].map((x) => x.querySelector("summary")?.textContent);
+    el.innerHTML = views[state.tab]();
+    for (const x of el.querySelectorAll("details")) if (open.includes(x.querySelector("summary")?.textContent)) x.open = true;
+  }
+}
+/** The input each SDLC tool gets from the page's state. */
+function sdlcArgs(tool) {
+  if (tool === "morpheus_tests") return { grouping: state.tests.grouping, path: state.tests.path };
+  if (tool === "morpheus_tasks") return { ...scopeArgs(), sort: state.tasks.sort, ...(state.tasks.category ? { category: state.tasks.category } : {}) };
+  return { range: state.range };
+}
+document.getElementById("main").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el || !el.closest(".view")) return;
+  const v = el.dataset.path ?? "";
+  const act = el.dataset.action;
+  if (act === "drill" || act === "crumb") state.tests.path = v;
+  else if (act === "group") { state.tests.grouping = v; state.tests.path = ""; store.set("wit-tests-grouping", v); }
+  else if (act === "sort") { state.tasks.sort = v; store.set("wit-tasks-sort", v); }
+  else if (act === "category") state.tasks.category = v || null;
+  else if (act === "tab") { location.hash = v; return; }
+  subscribe();
+});
+document.getElementById("main").addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-action][role=button], tr[data-action], li[data-action]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+});
+// The hover layer: any mark with data-tip shows it beside the pointer, or beside the focused mark.
+const tip = $("#tip");
+const showTip = (el, x, y) => { tip.textContent = el.dataset.tip; tip.hidden = false; const r = tip.getBoundingClientRect(); tip.style.left = `${Math.min(window.innerWidth - r.width - 8, x + 12)}px`; tip.style.top = `${Math.max(8, y - r.height - 10)}px`; };
+document.addEventListener("pointermove", (e) => { const el = e.target.closest?.("[data-tip]"); if (el) showTip(el, e.clientX, e.clientY); else tip.hidden = true; });
+document.addEventListener("focusin", (e) => { const el = e.target.closest?.("[data-tip]"); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left + r.width / 2, r.top); } else tip.hidden = true; });
+
 function subscribe() {
   if (!state.mcp) return;
   for (const u of state.unsub) u();
+  if (state.tab !== "process") {
+    const tab = W.TABS.find((t) => t.key === state.tab);
+    state.unsub = tab.tools.map((tool) => watch(tool, sdlcArgs(tool), (d) => { state.sdlc[tool] = d; renderSdlc(); }, `err-${state.tab}`));
+    // Resource use changes by the second: sample every five seconds while the tab is open.
+    if (state.tab === "resources") {
+      const timer = setInterval(() => call("morpheus_resources", sdlcArgs("morpheus_resources")).then((d) => { state.sdlc.morpheus_resources = d; if (state.tab === "resources") renderSdlc(); }).catch(() => {}), 5000);
+      state.unsub.push(() => clearInterval(timer));
+    }
+    renderSdlc();
+    return;
+  }
   state.unsub = [
     watch("morpheus_live", { ...(state.session ? { session: state.session } : {}), ...(state.branch ? { branch: state.branch } : {}) }, (d) => { state.live = d; renderLive(); }),
     watch("morpheus_overview", scopeArgs(), (d) => { state.overview = d; renderOverview(); }, "err-overview"),
@@ -463,6 +1188,7 @@ function subscribe() {
 function changed() { renderScope(); subscribe(); }
 $("#refresh").onclick = async () => {
   if (!state.mcp) return;
+  if (state.tab !== "process") { subscribe(); return; }
   $("#stamp").textContent = "Refreshing…";
   try {
     await Promise.all([
@@ -874,6 +1600,10 @@ async function openItem(kind, name) {
 
 // ---------- start ----------
 renderScope();
+for (const p of document.querySelectorAll(".tabpanel")) p.hidden = p.dataset.tab !== state.tab;
+for (const a of document.querySelectorAll("#tabbar a")) if (a.dataset.tab === state.tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+$("#tab-title").textContent = LEDE[state.tab][0];
+$("#tab-lede").textContent = LEDE[state.tab][1];
 for (const b of document.querySelectorAll("#ttabs button")) b.setAttribute("aria-pressed", b.dataset.k === state.table);
 renderTable();
 // Morpheus's own server: the same tools over /api, and a stream that says when Claude wrote

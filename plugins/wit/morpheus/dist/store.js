@@ -29,7 +29,7 @@ create table if not exists usage (
   session text not null, message_id text not null, agent_id text, file text, branch text,
   at integer not null, model text, tokens_in integer not null default 0,
   tokens_out integer not null default 0, tokens_cached integer not null default 0,
-  work integer not null default 0, orchestration integer not null default 0,
+  tokens_write integer not null default 0, work integer not null default 0, orchestration integer not null default 0,
   text integer not null default 0, primary key (session, message_id)
 );
 create index if not exists usage_at on usage (at);
@@ -43,11 +43,75 @@ create table if not exists events (
 );
 create index if not exists events_ts on events (ts);
 create table if not exists files (path text primary key, offset integer not null, size integer, ino integer);
+create table if not exists marks (
+  session text not null, at integer not null, type text not null, primary key (session, at, type)
+);
+create table if not exists meta (key text primary key, value text);
+create table if not exists commits (
+  sha text primary key, at integer not null, authored_at integer not null, author text,
+  subject text, ai integer not null default 0, is_merge integer not null default 0,
+  revert_of text, landed integer not null default 0, lead_from integer,
+  added integer not null default 0, deleted integer not null default 0, files integer not null default 0
+);
+create index if not exists commits_at on commits (at);
+create table if not exists commit_files (
+  sha text not null, path text not null, added integer not null default 0,
+  deleted integer not null default 0, primary key (sha, path)
+);
+create index if not exists commit_files_path on commit_files (path);
+create table if not exists deploys (
+  id text primary key, at integer not null, source text not null, sha text,
+  status text not null default 'success', lead_ms integer
+);
+create index if not exists deploys_at on deploys (at);
+create table if not exists ci_runs (
+  id text primary key, workflow text, at integer not null, duration_ms integer,
+  conclusion text, sha text, branch text, event text
+);
+create index if not exists ci_runs_at on ci_runs (at);
+create table if not exists incidents (
+  id text primary key, opened_at integer not null, resolved_at integer, source text not null
+);
+create table if not exists test_reports (
+  path text not null, hash text not null, at integer not null, kind text not null,
+  framework text, layer text, primary key (path, hash)
+);
+create table if not exists test_cases (
+  report text not null, id text not null, name text not null, suite text, file text,
+  duration_ms real, status text not null, at integer not null, primary key (report, id)
+);
+create index if not exists test_cases_id on test_cases (id, at);
+create table if not exists coverage_files (
+  report text not null, file text not null, lines_total integer not null, lines_hit integer not null,
+  branches_total integer not null default 0, branches_hit integer not null default 0,
+  at integer not null, layer text, primary key (report, file)
+);
+create table if not exists resource_samples (
+  at integer not null, scope text not null, cpu real not null default 0, rss integer not null default 0,
+  procs integer not null default 0, primary key (at, scope)
+);
+create index if not exists resource_samples_at on resource_samples (at);
+create table if not exists disk_samples (
+  at integer not null, key text not null, bytes integer not null, primary key (at, key)
+);
 `;
 
 /** Raise when the tables change: an older store is dropped and read again from the transcripts. */
-const VERSION = 1;
-const TABLES = ["runs", "agents", "usage", "prompts", "events", "files"];
+const VERSION = 2;
+const TABLES = [
+  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "commits",
+  "commit_files", "deploys", "ci_runs", "incidents", "test_reports", "test_cases",
+  "coverage_files", "resource_samples", "disk_samples",
+];
+
+/** A small key-value note in the store: where a collector got to, when it last ran. */
+export function getMeta(db              , key        )                {
+  const r = db.prepare("select value from meta where key = ?").get(key)                                 ;
+  return r ? r.value : null;
+}
+export function setMeta(db              , key        , value        )       {
+  db.prepare("insert into meta (key, value) values (?, ?) on conflict (key) do update set value = excluded.value").run(key, value);
+}
 
 export function openStore(path        )               {
   if (path !== ":memory:") {

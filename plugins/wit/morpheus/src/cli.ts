@@ -73,15 +73,44 @@ export function report(root: string, range = "7d"): string {
   return lines.join("\n");
 }
 
+/* node:coverage disable */
+// Starts the OS browser: tests pass their own `open` rather than launch one.
 function openBrowser(url: string) {
   const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   spawn(cmd, [url], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
 }
+/* node:coverage enable */
 
-async function main() {
-  const { cmd, flags } = parseArgs(process.argv.slice(2));
-  if (flags.version) return console.log(VERSION);
-  if (flags.help || cmd === "help") return console.log(HELP);
+/** Where the CLI writes and what it starts; tests pass their own. */
+export interface Io {
+  log: (line: string) => void;
+  error: (line: string) => void;
+  /** Progress notes, on stderr so stdout stays clean. */
+  status: (text: string) => void;
+  open: (url: string) => void;
+  exit: (code: number) => void;
+  input: NodeJS.ReadableStream;
+  output: NodeJS.WritableStream;
+}
+
+const defaultIo = (): Io => ({
+  log: console.log.bind(console),
+  error: console.error.bind(console),
+  status: process.stderr.write.bind(process.stderr),
+  open: openBrowser,
+  exit: (code) => {
+    process.exitCode = code;
+  },
+  input: process.stdin,
+  output: process.stdout,
+});
+
+/** Runs one command. `serve` resolves to the web server, once it's listening. */
+export async function main(argv = process.argv.slice(2), io: Partial<Io> = {}) {
+  const { log, error, status, open, exit, input, output } = { ...defaultIo(), ...io };
+  const { cmd, flags } = parseArgs(argv);
+  if (flags.version) return log(VERSION);
+  if (flags.help || cmd === "help") return log(HELP);
   const root = projectRoot(
     typeof flags.project === "string" ? flags.project : (process.env.CLAUDE_PROJECT_DIR ?? process.cwd()),
   );
@@ -90,27 +119,27 @@ async function main() {
       const port = Number(flags.port ?? process.env.MORPHEUS_PORT ?? 4673);
       const p = project(root);
       const t = Date.now();
-      process.stderr.write(`Reading ${root}'s transcripts…\n`);
+      status(`Reading ${root}'s transcripts…\n`);
       const n = refresh(p, 0);
-      process.stderr.write(`Read ${n} lines in ${Date.now() - t} ms\n`);
-      await serveWeb({ root, port });
+      status(`Read ${n} lines in ${Date.now() - t} ms\n`);
+      const server = await serveWeb({ root, port });
       const url = `http://localhost:${port}/`;
-      console.log(`Morpheus is live at ${url} (Ctrl+C to stop)`);
-      if (flags.open) openBrowser(url);
-      return;
+      log(`Morpheus is live at ${url} (Ctrl+C to stop)`);
+      if (flags.open) open(url);
+      return server;
     }
     case "mcp":
-      return serveMcp(root);
+      return serveMcp(root, input, output);
     case "report":
-      return console.log(report(root, typeof flags.range === "string" ? flags.range : "7d"));
+      return log(report(root, typeof flags.range === "string" ? flags.range : "7d"));
     case "ingest": {
       const t = Date.now();
       const n = refresh(project(root), 0);
-      return console.log(`Read ${n} new lines in ${Date.now() - t} ms`);
+      return log(`Read ${n} new lines in ${Date.now() - t} ms`);
     }
     case "projects":
       for (const p of listProjects())
-        console.log(`${new Date(p.lastAt).toISOString().slice(0, 10)}  ${String(p.sessions).padStart(5)} sessions  ${p.root}`);
+        log(`${new Date(p.lastAt).toISOString().slice(0, 10)}  ${String(p.sessions).padStart(5)} sessions  ${p.root}`);
       return;
     case "init":
       for (const line of init(root, {
@@ -118,12 +147,14 @@ async function main() {
         dryRun: !!flags["dry-run"],
         timer: join(import.meta.dirname, "..", "hooks", "morpheus-time.sh"),
       }))
-        console.log(line);
+        log(line);
       return;
     default:
-      console.error(`Unknown command ${cmd}\n\n${HELP}`);
-      process.exitCode = 2;
+      error(`Unknown command ${cmd}\n\n${HELP}`);
+      exit(2);
   }
 }
 
+// Runs only when started as a program, never when a test imports it.
+/* node:coverage ignore next */
 if (import.meta.main) main();

@@ -30,7 +30,7 @@ const CHUNK = 8 * 1024 * 1024;
 /** A gap longer than this between an agent's lines is idle, not work. */
 const IDLE_MS = 15 * 60_000;
 // Only lines that can hold a record are parsed: a transcript is mostly model text.
-const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"/;
+const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"/;
 
 /**
  * Calls `onLine` for each complete line after the stored position, then stores the new one. Reads
@@ -129,8 +129,8 @@ export function apply(db: DatabaseSync, p: Parsed, agentId?: string, file?: stri
       continue;
     }
     stmt(db, 
-      `insert into usage (session, message_id, agent_id, file, branch, at, model, tokens_in, tokens_out, tokens_cached, work, orchestration, text)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert into usage (session, message_id, agent_id, file, branch, at, model, tokens_in, tokens_out, tokens_cached, tokens_write, work, orchestration, text)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       u.session,
       u.messageId,
@@ -142,6 +142,7 @@ export function apply(db: DatabaseSync, p: Parsed, agentId?: string, file?: stri
       u.tokensIn,
       u.tokensOut,
       u.tokensCached,
+      u.tokensWrite ?? 0,
       u.work,
       u.orchestration,
       u.text,
@@ -165,6 +166,8 @@ export function apply(db: DatabaseSync, p: Parsed, agentId?: string, file?: stri
         r.toolUseId,
       );
   }
+  for (const m of p.marks ?? [])
+    stmt(db, "insert or ignore into marks (session, at, type) values (?, ?, ?)").run(m.session, m.at, m.type);
   for (const q of p.prompts) {
     stmt(db, "insert or ignore into prompts (session, at, text) values (?, ?, ?)").run(
       q.session,

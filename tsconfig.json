@@ -10,6 +10,8 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
     "types": ["node"]
   },
   "include": ["plugins/wit/morpheus/src", "plugins/wit/morpheus/test", "plugins/wit/morpheus/scripts"]
