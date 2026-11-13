@@ -235,7 +235,7 @@ npm install && npm run check
 
 `npm run check` typechecks Morpheus, runs its tests (`node --test`, no network) with a **99% line, branch and function coverage gate** over the server, collectors, metrics and the dashboard's modules, and checks that the committed `plugins/wit/morpheus/dist/` and `web/dashboard.html` match their sources. The test run also writes `coverage/lcov.info` and `coverage/junit.xml`, so Wit's own Tests tab shows its pyramid. `dist/` and the page are committed so `npx` and the plugin run without a build; after changing `src/` or `web/src/`, run `npm run build`.
 
-Coverage for the Python side (needs `pip install coverage`; CI fails under 90%):
+Coverage for the Python side, lines and branches (needs `pip install coverage`; CI fails under 99%):
 ```bash
 WIT_COVERAGE=1 python3 -m unittest discover -s tests && python3 -m coverage combine && python3 -m coverage report
 ```

@@ -36,10 +36,10 @@ jobs:
       - run: pip install coverage
       - name: Tests under coverage (subprocess-level)
         run: WIT_COVERAGE=1 python -m unittest discover -s tests
-      - name: Coverage report (fails under 90%)
+      - name: Coverage report (line + branch, fails under 99%)
         run: |
           python -m coverage combine
-          python -m coverage report
+          python -m coverage report --fail-under=99
 
   morpheus:
     strategy:

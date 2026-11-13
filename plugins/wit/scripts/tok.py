@@ -259,7 +259,7 @@ def post_tool(inp, t):
     resp = inp.get("tool_response")
     try:
         size = len(json.dumps(resp)) if not isinstance(resp, str) else len(resp)
-    except Exception:
+    except Exception:  # pragma: no cover - stdin was valid JSON, so it re-serializes
         size = 0
     sid = h(inp.get("session_id", ""))
     ev = {"e": "tool", "s": sid, "t": name, "b": size}
