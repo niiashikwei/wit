@@ -289,6 +289,13 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .chart .bs{fill:var(--muted);font:12px var(--mono)}
 .plain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
 .plain li{overflow-wrap:anywhere}
+.asks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.asks li{border:1px solid var(--line);border-left:3px solid var(--part);border-radius:10px;background:var(--surface);padding:10px 12px;font-size:13.5px}
+.asks li p{margin:6px 0 0;overflow-wrap:anywhere}
+.ltbl td .pill{white-space:normal}
+.eta-bar{display:block;height:4px;margin-top:6px;border-radius:2px;background:var(--line);overflow:hidden;max-width:220px}
+.eta-bar i{display:block;height:100%;border-radius:2px}
+.eta-bar .s-good{background:var(--ok)} .eta-bar .s-warn{background:var(--part)} .eta-bar .s-bad{background:var(--miss)}
 .tag{background:var(--code-bg);color:var(--ink)} .t-ai{background:var(--agent-bg);color:var(--agent)} .t-warn{background:var(--part-bg);color:var(--part)}
 td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhere}
 .ltbl tbody tr:not([data-action]){cursor:default}
@@ -297,14 +304,14 @@ td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhe
 </style>
 <nav class="tabs" aria-label="Dashboard"><div class="tabs-in" id="tabbar">
   <span class="dot" id="live-dot" title="Live"></span>
-  <a href="#health" data-tab="health">Health</a><a href="#delivery" data-tab="delivery">Delivery</a><a href="#tests" data-tab="tests">Tests</a><a href="#tokens" data-tab="tokens">Tokens &amp; cost</a><a href="#ai" data-tab="ai">AI effectiveness</a><a href="#quality" data-tab="quality">Quality</a><a href="#resources" data-tab="resources">Resources</a><a href="#process" data-tab="process">Hooks &amp; agents</a>
+  <a href="#status" data-tab="status">Status</a><a href="#health" data-tab="health">Health</a><a href="#delivery" data-tab="delivery">Delivery</a><a href="#tests" data-tab="tests">Tests</a><a href="#tokens" data-tab="tokens">Tokens &amp; cost</a><a href="#ai" data-tab="ai">AI effectiveness</a><a href="#quality" data-tab="quality">Quality</a><a href="#resources" data-tab="resources">Resources</a><a href="#process" data-tab="process">Hooks &amp; agents</a>
   <label class="proj">Project <select id="project" aria-label="Project to show"></select></label>
 </div></nav>
 
 <main class="wrap live" id="main">
   <header style="display:flex;flex-direction:column;gap:14px">
     <div class="eyebrow" id="proj-name">Wit · live from this machine</div>
-    <h1 id="tab-title">SDLC health</h1>
+    <h1 id="tab-title">Status</h1>
     <p class="lede" id="tab-lede">How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time.</p>
     <div class="bar">
       <div class="seg" role="group" aria-label="Time range" id="ranges">
@@ -417,6 +424,7 @@ td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhe
     <div class="err" id="err-table" hidden></div>
   </section>
 </div>
+  <div class="tabpanel" data-tab="status" hidden><div class="view" id="v-status"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-status" hidden></div></div>
   <div class="tabpanel" data-tab="health" hidden><div class="view" id="v-health"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-health" hidden></div></div>
   <div class="tabpanel" data-tab="delivery" hidden><div class="view" id="v-delivery"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-delivery" hidden></div></div>
   <div class="tabpanel" data-tab="tests" hidden><div class="view" id="v-tests"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-tests" hidden></div></div>
@@ -535,6 +543,7 @@ function watch(tool, input, onData, section) {
 }
 // ---------- tabs ----------
 const LEDE = {
+  status: ["Status", "Where things stand right now, without asking: what waits on you, what is running and when it should finish, and what finished lately."],
   health: ["SDLC health", "How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time."],
   delivery: ["Delivery", "The four DORA metrics: how often you ship, how fast a change gets out, how often a deploy needs fixing and how fast it is fixed."],
   tests: ["Testing pyramid", "Every test by layer, module, file and class, or by feature, with results and coverage at each level. Click a layer or a box to zoom in; use the trail to zoom out."],
@@ -556,6 +565,7 @@ window.addEventListener("hashchange", () => showTab(W.tabFromHash(location.hash)
 function renderSdlc() {
   const d = state.sdlc;
   const views = {
+    status: () => W.renderStatus(d.morpheus_status),
     health: () => W.renderHealth(d.morpheus_health),
     delivery: () => W.renderDelivery(d.morpheus_dora),
     tests: () => W.renderTests(d.morpheus_tests, state.tests),
@@ -605,6 +615,11 @@ function subscribe() {
   if (state.tab !== "process") {
     const tab = W.TABS.find((t) => t.key === state.tab);
     state.unsub = tab.tools.map((tool) => watch(tool, sdlcArgs(tool), (d) => { state.sdlc[tool] = d; renderSdlc(); }, `err-${state.tab}`));
+    // Status moves with the work: read it again every ten seconds while the tab is open.
+    if (state.tab === "status") {
+      const timer = setInterval(() => call("morpheus_status", {}).then((d) => { state.sdlc.morpheus_status = d; if (state.tab === "status") renderSdlc(); }).catch(() => {}), 10_000);
+      state.unsub.push(() => clearInterval(timer));
+    }
     // Resource use changes by the second: sample every five seconds while the tab is open.
     if (state.tab === "resources") {
       const timer = setInterval(() => call("morpheus_resources", sdlcArgs("morpheus_resources")).then((d) => { state.sdlc.morpheus_resources = d; if (state.tab === "resources") renderSdlc(); }).catch(() => {}), 5000);

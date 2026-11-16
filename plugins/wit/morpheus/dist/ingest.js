@@ -30,7 +30,7 @@ const CHUNK = 8 * 1024 * 1024;
 /** A gap longer than this between an agent's lines is idle, not work. */
 const IDLE_MS = 15 * 60_000;
 // Only lines that can hold a record are parsed: a transcript is mostly model text.
-const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"|"stop_hook_summary"|"api_error"|"pr-link"|"silent_turn_reminder"/;
+const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"|"stop_hook_summary"|"api_error"|"pr-link"|"silent_turn_reminder"|"custom-title"|"agent-name"|"queued_command"/;
 
 /**
  * Calls `onLine` for each complete line after the stored position, then stores the new one. Reads
@@ -166,6 +166,21 @@ export function apply(db              , p        , agentId         , file       
         r.toolUseId,
       );
   }
+  for (const t of p.titles ?? [])
+    stmt(db, "insert into session_titles (session, title) values (?, ?) on conflict (session) do update set title = excluded.title").run(t.session, t.title);
+  for (const b of p.bg ?? [])
+    stmt(db, "insert or ignore into bg (tool_use_id, session, kind, label, started_at) values (?, ?, ?, ?, ?)").run(b.toolUseId, b.session, b.kind, b.label, b.at);
+  for (const b of p.bgIds ?? []) stmt(db, "update bg set task_id = ? where tool_use_id = ?").run(b.taskId, b.toolUseId);
+  for (const n of p.notices ?? []) {
+    stmt(db, "insert or ignore into notices (session, at, task_id, status, summary, event) values (?, ?, ?, ?, ?, ?)").run(n.session, n.at, n.taskId, n.status, n.summary, n.event);
+    // The end of background work: by the call that started it, else by its task id.
+    if (n.status && n.status !== "running")
+      stmt(db, "update bg set ended_at = ?, status = ?, summary = ? where ended_at is null and (tool_use_id = ? or (task_id is not null and task_id = ?))").run(n.at, n.status, n.summary, n.toolUseId ?? "", n.taskId ?? "");
+  }
+  for (const k of p.asks ?? [])
+    stmt(db, "insert or ignore into asks (tool_use_id, session, at, kind, text, blocked) values (?, ?, ?, ?, ?, ?)").run(k.toolUseId, k.session, k.at, k.kind, k.text, k.blocked ? 1 : 0);
+  // A question or plan is answered by its result.
+  for (const r of p.results) stmt(db, "update asks set answered_at = ? where tool_use_id = ? and answered_at is null and kind <> 'ask'").run(r.at, r.toolUseId);
   for (const r of p.prs ?? [])
     stmt(db, `insert into prs (repo, number, url, session, first_at, last_at) values (?, ?, ?, ?, ?, ?)
       on conflict (repo, number) do update set first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`,

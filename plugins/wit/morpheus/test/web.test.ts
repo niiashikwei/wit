@@ -106,13 +106,14 @@ test("the score ring and horizontal bars show state in words and numbers, not co
 
 // @req R44
 test("tabs come from the URL hash, with the old #live link opening the hooks and agents tab", () => {
-  assert.deepEqual(TABS.map((t) => t.key), ["health", "delivery", "tests", "tokens", "ai", "quality", "resources", "process"]);
+  assert.deepEqual(TABS.map((t) => t.key), ["status", "health", "delivery", "tests", "tokens", "ai", "quality", "resources", "process"]);
   assert.equal(tabFromHash("#tests"), "tests");
   assert.equal(tabFromHash("#tests/unit"), "tests");
   assert.equal(tabFromHash("#live"), "process");
-  assert.equal(tabFromHash(""), "health");
-  assert.equal(tabFromHash(undefined), "health");
-  assert.equal(tabFromHash("#nope"), "health");
+  assert.equal(tabFromHash(""), "status", "Status opens first");
+  assert.equal(tabFromHash(undefined), "status");
+  assert.equal(tabFromHash("#nope"), "status");
+  assert.equal(tabFromHash("#health"), "health");
   assert.equal(categoryColor("feature"), "var(--s1)");
   assert.equal(categoryColor("chore"), "var(--muted)");
   assert.equal(categoryColor("unheard-of"), "var(--muted)");

@@ -289,6 +289,13 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .chart .bs{fill:var(--muted);font:12px var(--mono)}
 .plain{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
 .plain li{overflow-wrap:anywhere}
+.asks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.asks li{border:1px solid var(--line);border-left:3px solid var(--part);border-radius:10px;background:var(--surface);padding:10px 12px;font-size:13.5px}
+.asks li p{margin:6px 0 0;overflow-wrap:anywhere}
+.ltbl td .pill{white-space:normal}
+.eta-bar{display:block;height:4px;margin-top:6px;border-radius:2px;background:var(--line);overflow:hidden;max-width:220px}
+.eta-bar i{display:block;height:100%;border-radius:2px}
+.eta-bar .s-good{background:var(--ok)} .eta-bar .s-warn{background:var(--part)} .eta-bar .s-bad{background:var(--miss)}
 .tag{background:var(--code-bg);color:var(--ink)} .t-ai{background:var(--agent-bg);color:var(--agent)} .t-warn{background:var(--part-bg);color:var(--part)}
 td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhere}
 .ltbl tbody tr:not([data-action]){cursor:default}
@@ -297,14 +304,14 @@ td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhe
 </style>
 <nav class="tabs" aria-label="Dashboard"><div class="tabs-in" id="tabbar">
   <span class="dot" id="live-dot" title="Live"></span>
-  <a href="#health" data-tab="health">Health</a><a href="#delivery" data-tab="delivery">Delivery</a><a href="#tests" data-tab="tests">Tests</a><a href="#tokens" data-tab="tokens">Tokens &amp; cost</a><a href="#ai" data-tab="ai">AI effectiveness</a><a href="#quality" data-tab="quality">Quality</a><a href="#resources" data-tab="resources">Resources</a><a href="#process" data-tab="process">Hooks &amp; agents</a>
+  <a href="#status" data-tab="status">Status</a><a href="#health" data-tab="health">Health</a><a href="#delivery" data-tab="delivery">Delivery</a><a href="#tests" data-tab="tests">Tests</a><a href="#tokens" data-tab="tokens">Tokens &amp; cost</a><a href="#ai" data-tab="ai">AI effectiveness</a><a href="#quality" data-tab="quality">Quality</a><a href="#resources" data-tab="resources">Resources</a><a href="#process" data-tab="process">Hooks &amp; agents</a>
   <label class="proj">Project <select id="project" aria-label="Project to show"></select></label>
 </div></nav>
 
 <main class="wrap live" id="main">
   <header style="display:flex;flex-direction:column;gap:14px">
     <div class="eyebrow" id="proj-name">Wit · live from this machine</div>
-    <h1 id="tab-title">SDLC health</h1>
+    <h1 id="tab-title">Status</h1>
     <p class="lede" id="tab-lede">How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time.</p>
     <div class="bar">
       <div class="seg" role="group" aria-label="Time range" id="ranges">
@@ -417,6 +424,7 @@ td.prompt{max-width:460px} td.prompt summary{cursor:pointer;overflow-wrap:anywhe
     <div class="err" id="err-table" hidden></div>
   </section>
 </div>
+  <div class="tabpanel" data-tab="status" hidden><div class="view" id="v-status"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-status" hidden></div></div>
   <div class="tabpanel" data-tab="health" hidden><div class="view" id="v-health"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-health" hidden></div></div>
   <div class="tabpanel" data-tab="delivery" hidden><div class="view" id="v-delivery"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-delivery" hidden></div></div>
   <div class="tabpanel" data-tab="tests" hidden><div class="view" id="v-tests"><p class="meta">Waiting for the first numbers…</p></div><div class="err" id="err-tests" hidden></div></div>
@@ -483,6 +491,19 @@ function fmtAgo(t, now = Date.now()) {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} d ago`;
+}
+
+/** A time of day, 24-hour, in the viewer's time zone. */
+const fmtClock = (t) => {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+/** How far off a moment is: "in 12 min", or "5 min ago" once it has passed. */
+function fmtUntil(t, now = Date.now()) {
+  if (t <= now) return fmtAgo(t, now);
+  const s = Math.round((t - now) / 1000);
+  return s < 60 ? `in ${s} s` : s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${(s / 3600).toFixed(1)} h`;
 }
 
 const fmtDate = (t) => {
@@ -949,6 +970,61 @@ function renderAI(q, tasks) {
   ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;
 }
 
+// ---------- Status ----------
+const ASK_LABEL = { question: "Question", plan: "Plan to approve", ask: "Go-ahead", api: "Sign-in" };
+const KIND_LABEL = { command: "Command", agent: "Agent", monitor: "Monitor", ci: "CI", deploy: "Deploy" };
+const STATE_PILL = { waiting: ["warn", "Waiting on you"], working: ["good", "Working"], idle: ["unknown", "Idle"] };
+const who = (x) => esc(x.title ?? (x.session ? x.session.slice(0, 8) : "–"));
+
+/** When a piece of work should finish, and how far along it is against the usual time. */
+function finish(f, now) {
+  if (f.eta == null) return { text: "no history yet", bar: "", status: null };
+  const share = Math.min(1, (now - f.startedAt) / f.p90);
+  const status = f.overdue ? "bad" : now > f.eta ? "warn" : "good";
+  const text = f.overdue
+    ? `overdue: usually done by ${fmtClock(f.startedAt + f.p90)}`
+    : now > f.eta
+      ? `running long: usually ${fmtMs(f.p50)}, done by ${fmtClock(f.startedAt + f.p90)} at the latest`
+      : `about ${fmtClock(f.eta)} (${fmtUntil(f.eta, now)})`;
+  const bar = `<span class="eta-bar" role="img" aria-label="${esc(`${Math.round(share * 100)}% of the usual time`)}"><i class="s-${status}" style="width:${(share * 100).toFixed(0)}%"></i></span>`;
+  return { text, bar, status };
+}
+
+function renderStatus(d, now = d?.now ?? Date.now()) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const working = d.sessions.filter((s) => s.state === "working").length;
+  const late = d.inFlight.filter((f) => f.overdue).length;
+  return `<div class="kpis">
+    ${tile("Waiting on you", fmtNum(d.waiting.length), d.waiting.length ? `oldest ${fmtAgo(Math.min(...d.waiting.map((w) => w.since)), now)}` : "nothing to answer", d.waiting.length ? "warn" : "good")}
+    ${tile("Running now", fmtNum(d.inFlight.length), late ? `${late} running past the usual time` : "commands, agents, monitors and CI", late ? "bad" : null)}
+    ${tile("Sessions working", fmtNum(working), `${d.sessions.length} active in the last day`)}
+    ${tile("Finished lately", fmtNum(d.recent.length), `${d.recent.filter((r) => r.status !== "completed" && r.status !== "success").length} failed or stopped, last six hours`)}
+  </div>
+  ${section("Questions, plans and go-aheads with no answer yet", "Waiting on you", d.waiting.length
+    ? `<ul class="asks">${d.waiting.map((w) => `<li>${pill(w.blocked ? "warn" : "unknown", ASK_LABEL[w.kind] ?? w.kind)} <b>${who(w)}</b> <span class="meta">${esc(fmtAgo(w.since, now))}${w.blocked ? " · the session is stopped until you answer" : ""}</span><p>${esc(w.text ?? "")}</p></li>`).join("")}</ul>`
+    : empty("Nothing is waiting on you."))}
+  ${section("Work running on its own, with when it should finish", "Running now", d.inFlight.length
+    ? `<div class="ltbl"><table><thead><tr><th>What</th><th>Kind</th><th>Session</th><th>Started</th><th>Should finish</th></tr></thead><tbody>${d.inFlight.map((f) => {
+        const e = finish(f, now);
+        return `<tr><td>${esc(f.label ?? "–")}${f.detail ? `<div class="meta">${esc(f.detail)}</div>` : ""}</td><td><span class="tag">${esc(KIND_LABEL[f.kind] ?? f.kind)}</span></td><td>${f.session ? who(f) : '<span class="meta">GitHub</span>'}</td><td>${esc(fmtAgo(f.startedAt, now))}</td><td>${e.status ? pill(e.status, e.text) : `<span class="meta">${esc(e.text)}</span>`}${e.bar}${f.samples ? `<div class="meta">from ${f.samples} earlier runs</div>` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>`
+    : empty("Nothing is running in the background."), `Finish times are the usual time for the same kind of work: the median of earlier runs, and the 90th percentile as the point it counts as overdue.${d.unreported ? ` ${d.unreported} older background ${d.unreported === 1 ? "job" : "jobs"} started in the last day never reported back (the app may have been quit) and ${d.unreported === 1 ? "is" : "are"} not listed.` : ""}`)}
+  ${section("Active in the last day", "Sessions", d.sessions.length
+    ? `<div class="ltbl"><table><thead><tr><th>Session</th><th>State</th><th>Branch</th><th>Your last prompt</th><th class="num">Running</th><th>Last active</th></tr></thead><tbody>${d.sessions.map((s) => {
+        const [st, label] = STATE_PILL[s.state];
+        return `<tr><td>${who(s)}${s.worktree ? `<div class="meta">worktree ${esc(s.worktree)}</div>` : ""}</td><td>${pill(st, label)}</td><td class="mono">${esc(s.branch ?? "–")}</td><td>${esc(s.prompt ?? "–")}${s.promptAt ? `<div class="meta">${esc(fmtAgo(s.promptAt, now))}</div>` : ""}</td><td class="num">${s.running}</td><td>${esc(fmtAgo(s.lastAt, now))}</td></tr>`;
+      }).join("")}</tbody></table></div>`
+    : empty("No session was active in the last day."))}
+  <div class="grid2">
+    ${section("Last six hours", "Finished lately", d.recent.length
+      ? `<ul class="plain">${d.recent.map((r) => `<li>${pill(r.status === "completed" || r.status === "success" ? "good" : "bad", r.status)} <span class="tag">${esc(KIND_LABEL[r.kind] ?? r.kind)}</span> ${esc(r.label ?? "–")} <span class="meta">${r.durationMs != null ? `${esc(fmtMs(r.durationMs))} · ` : ""}${esc(fmtAgo(r.at, now))}</span></li>`).join("")}</ul>`
+      : empty("Nothing finished in the last six hours."))}
+    ${section("From monitors", "Latest updates", d.updates.length
+      ? `<ul class="plain">${d.updates.map((u) => `<li><b>${esc(u.event)}</b> <span class="meta">${esc(u.label ?? "monitor")} · ${esc(fmtAgo(u.at, now))}</span></li>`).join("")}</ul>`
+      : empty("No monitor events lately."))}
+  </div>`;
+}
+
 // ---------- Quality ----------
 function renderQuality(q) {
   if (!q) return empty("Waiting for the first numbers…");
@@ -996,6 +1072,7 @@ function renderResources(d) {
 
 /** The dashboard's tabs, in order, with the tools each one reads. */
 const TABS = [
+  { key: "status", label: "Status", tools: ["morpheus_status"] },
   { key: "health", label: "Health", tools: ["morpheus_health"] },
   { key: "delivery", label: "Delivery", tools: ["morpheus_dora"] },
   { key: "tests", label: "Tests", tools: ["morpheus_tests"] },
@@ -1009,10 +1086,10 @@ const TABS = [
 /** The tab a URL hash names, else the first. */
 function tabFromHash(hash) {
   const k = String(hash ?? "").replace(/^#/, "").split("/")[0];
-  return TABS.some((t) => t.key === k) ? k : k === "live" ? "process" : "health";
+  return TABS.some((t) => t.key === k) ? k : k === "live" ? "process" : "status";
 }
 
-return { esc, fmtMs, fmtNum, fmtPct, fmtBytes, fmtMoney, fmtAgo, fmtDate, fmtDay, fmtUnit, STATUS_LABEL, STATUS_ICON, BAND_LABEL, bandStatus, covStatus, pill, seriesVar, niceMax, legend, stackedBars, lineChart, sparkline, histogram, pyramid, squarify, treemap, ring, hbars, CATEGORY_ORDER, categoryColor, SCOPE_ORDER, SCOPE_LABEL, renderHealth, renderDelivery, renderTests, TASK_PAGE, renderTokens, renderAI, renderQuality, renderResources, TABS, tabFromHash };
+return { esc, fmtMs, fmtNum, fmtPct, fmtBytes, fmtMoney, fmtAgo, fmtClock, fmtUntil, fmtDate, fmtDay, fmtUnit, STATUS_LABEL, STATUS_ICON, BAND_LABEL, bandStatus, covStatus, pill, seriesVar, niceMax, legend, stackedBars, lineChart, sparkline, histogram, pyramid, squarify, treemap, ring, hbars, CATEGORY_ORDER, categoryColor, SCOPE_ORDER, SCOPE_LABEL, renderHealth, renderDelivery, renderTests, TASK_PAGE, renderTokens, renderAI, renderStatus, renderQuality, renderResources, TABS, tabFromHash };
 })();
 </script>
 <script>
@@ -1119,6 +1196,7 @@ function watch(tool, input, onData, section) {
 }
 // ---------- tabs ----------
 const LEDE = {
+  status: ["Status", "Where things stand right now, without asking: what waits on you, what is running and when it should finish, and what finished lately."],
   health: ["SDLC health", "How this project's delivery, tests, tokens and Claude Code setup are doing, live and over time."],
   delivery: ["Delivery", "The four DORA metrics: how often you ship, how fast a change gets out, how often a deploy needs fixing and how fast it is fixed."],
   tests: ["Testing pyramid", "Every test by layer, module, file and class, or by feature, with results and coverage at each level. Click a layer or a box to zoom in; use the trail to zoom out."],
@@ -1140,6 +1218,7 @@ window.addEventListener("hashchange", () => showTab(W.tabFromHash(location.hash)
 function renderSdlc() {
   const d = state.sdlc;
   const views = {
+    status: () => W.renderStatus(d.morpheus_status),
     health: () => W.renderHealth(d.morpheus_health),
     delivery: () => W.renderDelivery(d.morpheus_dora),
     tests: () => W.renderTests(d.morpheus_tests, state.tests),
@@ -1189,6 +1268,11 @@ function subscribe() {
   if (state.tab !== "process") {
     const tab = W.TABS.find((t) => t.key === state.tab);
     state.unsub = tab.tools.map((tool) => watch(tool, sdlcArgs(tool), (d) => { state.sdlc[tool] = d; renderSdlc(); }, `err-${state.tab}`));
+    // Status moves with the work: read it again every ten seconds while the tab is open.
+    if (state.tab === "status") {
+      const timer = setInterval(() => call("morpheus_status", {}).then((d) => { state.sdlc.morpheus_status = d; if (state.tab === "status") renderSdlc(); }).catch(() => {}), 10_000);
+      state.unsub.push(() => clearInterval(timer));
+    }
     // Resource use changes by the second: sample every five seconds while the tab is open.
     if (state.tab === "resources") {
       const timer = setInterval(() => call("morpheus_resources", sdlcArgs("morpheus_resources")).then((d) => { state.sdlc.morpheus_resources = d; if (state.tab === "resources") renderSdlc(); }).catch(() => {}), 5000);

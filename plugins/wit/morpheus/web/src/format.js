@@ -49,6 +49,19 @@ export function fmtAgo(t, now = Date.now()) {
   return `${Math.round(s / 86400)} d ago`;
 }
 
+/** A time of day, 24-hour, in the viewer's time zone. */
+export const fmtClock = (t) => {
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+/** How far off a moment is: "in 12 min", or "5 min ago" once it has passed. */
+export function fmtUntil(t, now = Date.now()) {
+  if (t <= now) return fmtAgo(t, now);
+  const s = Math.round((t - now) / 1000);
+  return s < 60 ? `in ${s} s` : s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${(s / 3600).toFixed(1)} h`;
+}
+
 export const fmtDate = (t) => {
   const d = new Date(t);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

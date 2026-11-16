@@ -85,6 +85,16 @@
                                                                                                                
                                                         
                                                                                             
+                                                               
+                                                
+                                                                                     
+                                                                                                                         
+                                                                  
+                                                  
+                                                                           
+                                                                                                                                                                    
+                                                                                                
+                                                                                                                                        
  
 
 const EXCERPT = 240;
@@ -259,7 +269,20 @@ const empty = ()         => ({
   at: null,
   marks: [],
   prs: [],
+  titles: [],
+  bg: [],
+  bgIds: [],
+  notices: [],
+  asks: [],
 });
+
+/** A background task's notice: which task, which call started it, how it ended or what it saw. */
+function notice(session        , at        , body        ) {
+  // Notices are XML-like: their text comes with &amp; and friends.
+  const tag = (t        ) =>
+    body.match(new RegExp(`<${t}>([\\s\\S]*?)</${t}>`))?.[1]?.trim().replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[e         ]) || null;
+  return { session, at, taskId: tag("task-id"), toolUseId: tag("tool-use-id"), status: tag("status"), summary: redact(tag("summary"), 200), event: redact(tag("event"), 200) };
+}
 
 /** A tool result that says the person turned the call down. */
 const DENIED = /doesn't want to proceed|tool use was rejected|permission to use .* (was )?denied/i;
@@ -277,6 +300,11 @@ export function parseTranscriptLine(line        , opts                     = {})
     return out;
   }
   if (!row || typeof row !== "object" || (row.isSidechain && !opts.agent)) return out;
+  if ((row.type === "custom-title" || row.type === "agent-name") && row.sessionId && !opts.agent) {
+    const title = row.customTitle ?? row.agentName;
+    if (typeof title === "string" && title.trim()) out.titles .push({ session: String(row.sessionId), title: redact(title.trim(), 120)  });
+    return out;
+  }
   const at = Date.parse(row.timestamp ?? "");
   if (!Number.isFinite(at) || !row.sessionId) return out;
   out.at = at;
@@ -321,6 +349,11 @@ export function parseTranscriptLine(line        , opts                     = {})
   };
 
   const a = row.type === "attachment" ? row.attachment : null;
+  // A notice that arrives while Claude is busy is queued as an attachment.
+  if (a?.type === "queued_command" && typeof a.prompt === "string" && a.prompt.includes("<task-notification>")) {
+    out.notices .push(notice(session, at, a.prompt));
+    return out;
+  }
   if (a?.type === "silent_turn_reminder") {
     out.marks .push({ session, at, type: "silent" });
     return out;
@@ -395,6 +428,23 @@ export function parseTranscriptLine(line        , opts                     = {})
       // A background agent's report goes back through this tool, not a closing text block.
       if (c.name === "SubagentHandback" && typeof input.message === "string")
         out.lastText = input.message;
+      if (c.name === "Monitor" || (input.run_in_background === true && ["Bash", "Agent", "Task"].includes(c.name)))
+        out.bg .push({
+          toolUseId: c.id, session, at,
+          kind: c.name === "Monitor" ? "monitor" : c.name === "Bash" ? "command" : "agent",
+          label: redact(input.description ?? input.command ?? input.prompt, 120),
+        });
+      // Stopping a task ends it as surely as its notice would.
+      if (c.name === "TaskStop" && typeof (input.task_id ?? input.shell_id) === "string")
+        out.notices .push({ session, at, taskId: String(input.task_id ?? input.shell_id), toolUseId: null, status: "stopped", summary: null, event: null });
+      if (c.name === "AskUserQuestion" || c.name === "ExitPlanMode" || (c.name === "mcp__ccd_turn__wrap_up" && typeof input.ask === "string" && input.ask))
+        out.asks .push({
+          session, at, toolUseId: c.id,
+          kind: c.name === "AskUserQuestion" ? "question" : c.name === "ExitPlanMode" ? "plan" : "ask",
+          text: redact(c.name === "AskUserQuestion" ? input.questions?.[0]?.question : c.name === "ExitPlanMode" ? "A plan to approve" : input.ask, 200),
+          // A question or a plan stops the turn; a wrap-up ask only when it says so.
+          blocked: c.name !== "mcp__ccd_turn__wrap_up" || input.blocked === true,
+        });
       const kind       =
         c.name === "Skill" ? "skill" : c.name === "Agent" || c.name === "Task" ? "agent" : "tool";
       out.runs.push({
@@ -435,7 +485,10 @@ export function parseTranscriptLine(line        , opts                     = {})
   if (row.type === "user") {
     const results = Array.isArray(content) ? content.filter((c) => c?.type === "tool_result") : [];
     for (const c of results) {
-      if (c.is_error && DENIED.test(textOf(c.content))) out.marks .push({ session, at, type: "denied" });
+      const said = textOf(c.content);
+      if (c.is_error && DENIED.test(said)) out.marks .push({ session, at, type: "denied" });
+      const id = said.match(/running in background with ID: ([\w-]+)|^Monitor started \(task ([\w-]+)/);
+      if (id && c.tool_use_id) out.bgIds .push({ toolUseId: c.tool_use_id, taskId: (id[1] ?? id[2])  });
       out.results.push({
         toolUseId: c.tool_use_id,
         at,
@@ -445,6 +498,8 @@ export function parseTranscriptLine(line        , opts                     = {})
     }
     // The desktop app puts its own <system-reminder> notes before what the person typed.
     const text = textOf(content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
+    // A notice that arrives while Claude is idle comes as its own message.
+    if (!opts.agent && text.startsWith("<task-notification>")) out.notices .push(notice(session, at, text));
     // A person's prompt: no tool result, no harness notice, not a skill's own text.
     if (!opts.agent && !results.length && !row.isMeta && text && !/^<[\w-]+/.test(text)) {
       out.prompts.push({ session, at, text: redact(text, 160)  });

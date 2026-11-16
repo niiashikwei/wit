@@ -33,6 +33,7 @@ import { allTests, discover,                                latestCoverage, pyra
 import {                tasksReport } from "./tasks.js";
 import { diskSample, resources, sample } from "./resources.js";
 import { contextBySession, quality } from "./quality.js";
+import { status } from "./status.js";
 import { health } from "./health.js";
 
 const RANGES          = ["1h", "today", "7d", "30d", "all"];
@@ -385,6 +386,13 @@ export const TOOLS         = [
       const s = scopeOf(input);
       return quality(p.db, p.root, s.range, now, tasksReport(p.db, { range: s.range }, now, { limit: 0 }).totals);
     },
+  },
+  {
+    name: "morpheus_status",
+    description:
+      "Where things stand right now: sessions at work and their state, what each waits on the person for (questions, plans, go-aheads, failing sign-in), background commands, agents, monitors and CI still running with when each should finish (median and 90th percentile of the same kind of work before), and what finished in the last six hours.",
+    inputSchema: { type: "object", properties: { project: scopeProps.project } },
+    run: (p, _input, now) => status(p.db, now),
   },
   {
     name: "morpheus_inventory",

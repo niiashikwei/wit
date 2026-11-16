@@ -3,7 +3,7 @@
 // the page wires up: drill, crumb, group, sort, category, tab.
 import { hbars, histogram, legend, lineChart, pyramid, ring, sparkline, stackedBars, treemap } from "./charts.js";
 import {
-  BAND_LABEL, bandStatus, covStatus, esc, fmtAgo, fmtBytes, fmtDate, fmtDay, fmtMoney, fmtMs, fmtNum, fmtPct, fmtUnit, pill,
+  BAND_LABEL, bandStatus, covStatus, esc, fmtAgo, fmtBytes, fmtClock, fmtDate, fmtDay, fmtMoney, fmtMs, fmtNum, fmtPct, fmtUnit, fmtUntil, pill,
 } from "./format.js";
 
 /** Task categories in a fixed colour order; the last two share the muted "other" colour. */
@@ -206,6 +206,61 @@ export function renderAI(q, tasks) {
   ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;
 }
 
+// ---------- Status ----------
+const ASK_LABEL = { question: "Question", plan: "Plan to approve", ask: "Go-ahead", api: "Sign-in" };
+const KIND_LABEL = { command: "Command", agent: "Agent", monitor: "Monitor", ci: "CI", deploy: "Deploy" };
+const STATE_PILL = { waiting: ["warn", "Waiting on you"], working: ["good", "Working"], idle: ["unknown", "Idle"] };
+const who = (x) => esc(x.title ?? (x.session ? x.session.slice(0, 8) : "–"));
+
+/** When a piece of work should finish, and how far along it is against the usual time. */
+function finish(f, now) {
+  if (f.eta == null) return { text: "no history yet", bar: "", status: null };
+  const share = Math.min(1, (now - f.startedAt) / f.p90);
+  const status = f.overdue ? "bad" : now > f.eta ? "warn" : "good";
+  const text = f.overdue
+    ? `overdue: usually done by ${fmtClock(f.startedAt + f.p90)}`
+    : now > f.eta
+      ? `running long: usually ${fmtMs(f.p50)}, done by ${fmtClock(f.startedAt + f.p90)} at the latest`
+      : `about ${fmtClock(f.eta)} (${fmtUntil(f.eta, now)})`;
+  const bar = `<span class="eta-bar" role="img" aria-label="${esc(`${Math.round(share * 100)}% of the usual time`)}"><i class="s-${status}" style="width:${(share * 100).toFixed(0)}%"></i></span>`;
+  return { text, bar, status };
+}
+
+export function renderStatus(d, now = d?.now ?? Date.now()) {
+  if (!d) return empty("Waiting for the first numbers…");
+  const working = d.sessions.filter((s) => s.state === "working").length;
+  const late = d.inFlight.filter((f) => f.overdue).length;
+  return `<div class="kpis">
+    ${tile("Waiting on you", fmtNum(d.waiting.length), d.waiting.length ? `oldest ${fmtAgo(Math.min(...d.waiting.map((w) => w.since)), now)}` : "nothing to answer", d.waiting.length ? "warn" : "good")}
+    ${tile("Running now", fmtNum(d.inFlight.length), late ? `${late} running past the usual time` : "commands, agents, monitors and CI", late ? "bad" : null)}
+    ${tile("Sessions working", fmtNum(working), `${d.sessions.length} active in the last day`)}
+    ${tile("Finished lately", fmtNum(d.recent.length), `${d.recent.filter((r) => r.status !== "completed" && r.status !== "success").length} failed or stopped, last six hours`)}
+  </div>
+  ${section("Questions, plans and go-aheads with no answer yet", "Waiting on you", d.waiting.length
+    ? `<ul class="asks">${d.waiting.map((w) => `<li>${pill(w.blocked ? "warn" : "unknown", ASK_LABEL[w.kind] ?? w.kind)} <b>${who(w)}</b> <span class="meta">${esc(fmtAgo(w.since, now))}${w.blocked ? " · the session is stopped until you answer" : ""}</span><p>${esc(w.text ?? "")}</p></li>`).join("")}</ul>`
+    : empty("Nothing is waiting on you."))}
+  ${section("Work running on its own, with when it should finish", "Running now", d.inFlight.length
+    ? `<div class="ltbl"><table><thead><tr><th>What</th><th>Kind</th><th>Session</th><th>Started</th><th>Should finish</th></tr></thead><tbody>${d.inFlight.map((f) => {
+        const e = finish(f, now);
+        return `<tr><td>${esc(f.label ?? "–")}${f.detail ? `<div class="meta">${esc(f.detail)}</div>` : ""}</td><td><span class="tag">${esc(KIND_LABEL[f.kind] ?? f.kind)}</span></td><td>${f.session ? who(f) : '<span class="meta">GitHub</span>'}</td><td>${esc(fmtAgo(f.startedAt, now))}</td><td>${e.status ? pill(e.status, e.text) : `<span class="meta">${esc(e.text)}</span>`}${e.bar}${f.samples ? `<div class="meta">from ${f.samples} earlier runs</div>` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>`
+    : empty("Nothing is running in the background."), `Finish times are the usual time for the same kind of work: the median of earlier runs, and the 90th percentile as the point it counts as overdue.${d.unreported ? ` ${d.unreported} older background ${d.unreported === 1 ? "job" : "jobs"} started in the last day never reported back (the app may have been quit) and ${d.unreported === 1 ? "is" : "are"} not listed.` : ""}`)}
+  ${section("Active in the last day", "Sessions", d.sessions.length
+    ? `<div class="ltbl"><table><thead><tr><th>Session</th><th>State</th><th>Branch</th><th>Your last prompt</th><th class="num">Running</th><th>Last active</th></tr></thead><tbody>${d.sessions.map((s) => {
+        const [st, label] = STATE_PILL[s.state];
+        return `<tr><td>${who(s)}${s.worktree ? `<div class="meta">worktree ${esc(s.worktree)}</div>` : ""}</td><td>${pill(st, label)}</td><td class="mono">${esc(s.branch ?? "–")}</td><td>${esc(s.prompt ?? "–")}${s.promptAt ? `<div class="meta">${esc(fmtAgo(s.promptAt, now))}</div>` : ""}</td><td class="num">${s.running}</td><td>${esc(fmtAgo(s.lastAt, now))}</td></tr>`;
+      }).join("")}</tbody></table></div>`
+    : empty("No session was active in the last day."))}
+  <div class="grid2">
+    ${section("Last six hours", "Finished lately", d.recent.length
+      ? `<ul class="plain">${d.recent.map((r) => `<li>${pill(r.status === "completed" || r.status === "success" ? "good" : "bad", r.status)} <span class="tag">${esc(KIND_LABEL[r.kind] ?? r.kind)}</span> ${esc(r.label ?? "–")} <span class="meta">${r.durationMs != null ? `${esc(fmtMs(r.durationMs))} · ` : ""}${esc(fmtAgo(r.at, now))}</span></li>`).join("")}</ul>`
+      : empty("Nothing finished in the last six hours."))}
+    ${section("From monitors", "Latest updates", d.updates.length
+      ? `<ul class="plain">${d.updates.map((u) => `<li><b>${esc(u.event)}</b> <span class="meta">${esc(u.label ?? "monitor")} · ${esc(fmtAgo(u.at, now))}</span></li>`).join("")}</ul>`
+      : empty("No monitor events lately."))}
+  </div>`;
+}
+
 // ---------- Quality ----------
 export function renderQuality(q) {
   if (!q) return empty("Waiting for the first numbers…");
@@ -253,6 +308,7 @@ export function renderResources(d) {
 
 /** The dashboard's tabs, in order, with the tools each one reads. */
 export const TABS = [
+  { key: "status", label: "Status", tools: ["morpheus_status"] },
   { key: "health", label: "Health", tools: ["morpheus_health"] },
   { key: "delivery", label: "Delivery", tools: ["morpheus_dora"] },
   { key: "tests", label: "Tests", tools: ["morpheus_tests"] },
@@ -266,5 +322,5 @@ export const TABS = [
 /** The tab a URL hash names, else the first. */
 export function tabFromHash(hash) {
   const k = String(hash ?? "").replace(/^#/, "").split("/")[0];
-  return TABS.some((t) => t.key === k) ? k : k === "live" ? "process" : "health";
+  return TABS.some((t) => t.key === k) ? k : k === "live" ? "process" : "status";
 }

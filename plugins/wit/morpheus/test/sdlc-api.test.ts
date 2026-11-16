@@ -72,7 +72,7 @@ test("the tests tool gives the pyramid, a drilled node, history, slowest, failin
   assert.deepEqual(flaky.flaky.map((t: any) => t.name), ["test_add"]);
 });
 
-// @req R29 R36 R40 R41 R42 R43
+// @req R29 R36 R40 R41 R42 R43 R55
 test("the SDLC tools answer through the API and are listed read-only over MCP", () => {
   const { p } = fixture();
   refreshSdlc(p, NOW);
@@ -92,12 +92,14 @@ test("the SDLC tools answer through the API and are listed read-only over MCP", 
   const again = tool("morpheus_resources").run(p, {}, NOW + 10) as any;
   assert.equal(again.sampledAt, res.sampledAt, "a fresh sample is reused");
   assert.equal((tool("morpheus_tests").run(p, { grouping: "feature" }, NOW) as any).grouping, "feature");
+  const st = tool("morpheus_status").run(p, {}, NOW) as any;
+  assert.deepEqual(Object.keys(st), ["now", "waiting", "inFlight", "unreported", "sessions", "recent", "updates"]);
   const inv = tool("morpheus_inventory").run(p, {}, NOW) as any;
   assert.equal(inv.root, p.root);
   const q = tool("morpheus_quality").run(p, { range: "30d" }, NOW) as any;
   assert.equal(q.ai.commits, 1);
   const list = handle({ jsonrpc: "2.0", id: 1, method: "tools/list" }, { call: () => null }) as any;
   const names = list.result.tools.map((x: any) => x.name);
-  for (const n of ["morpheus_health", "morpheus_dora", "morpheus_tests", "morpheus_tasks", "morpheus_resources", "morpheus_quality"]) assert.ok(names.includes(n), n);
+  for (const n of ["morpheus_status", "morpheus_health", "morpheus_dora", "morpheus_tests", "morpheus_tasks", "morpheus_resources", "morpheus_quality"]) assert.ok(names.includes(n), n);
   assert.ok(list.result.tools.every((x: any) => x.annotations.readOnlyHint));
 });

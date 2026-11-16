@@ -47,6 +47,21 @@ create table if not exists marks (
   session text not null, at integer not null, type text not null, primary key (session, at, type)
 );
 create table if not exists meta (key text primary key, value text);
+create table if not exists session_titles (session text primary key, title text not null);
+create table if not exists bg (
+  tool_use_id text primary key, session text not null, kind text not null, label text, task_id text,
+  started_at integer not null, ended_at integer, status text, summary text
+);
+create index if not exists bg_task on bg (task_id);
+create table if not exists notices (
+  session text not null, at integer not null, task_id text, status text, summary text, event text,
+  primary key (session, at, task_id)
+);
+create table if not exists asks (
+  tool_use_id text primary key, session text not null, at integer not null, kind text not null,
+  text text, blocked integer not null default 1, answered_at integer
+);
+create index if not exists asks_session on asks (session, at);
 create table if not exists prs (
   repo text not null, number integer not null, url text, session text, first_at integer not null,
   last_at integer not null, primary key (repo, number)
@@ -101,9 +116,9 @@ create table if not exists disk_samples (
 `;
 
 /** Raise when the tables change: an older store is dropped and read again from the transcripts. */
-const VERSION = 3;
+const VERSION = 4;
 const TABLES = [
-  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "commits",
+  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "session_titles", "bg", "notices", "asks", "commits",
   "commit_files", "deploys", "ci_runs", "incidents", "test_reports", "test_cases",
   "coverage_files", "resource_samples", "disk_samples",
 ];

@@ -271,7 +271,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   assert.equal(statSync(join(tmp, "store")).mode & 0o777, 0o700);
   db = openStore(f);
   assert.equal(db.prepare("select count(*) as n from meta").get()!.n, 1, "kept");
-  db.exec("pragma user_version = 2");
+  db.exec("pragma user_version = 3");
   db.close();
   db = openStore(f);
   assert.equal(db.prepare("select count(*) as n from meta").get()!.n, 0, "an older store is read again from scratch");
@@ -281,7 +281,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   process.chdir(dir("uri"));
   try {
     const mem = openStore("file:morpheus?mode=memory");
-    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 3);
+    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 4);
     assert.equal(existsSync("file:morpheus?mode=memory"), false);
   } finally {
     process.chdir(cwd);

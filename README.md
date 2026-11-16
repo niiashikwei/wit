@@ -116,6 +116,7 @@ npx github:niiashikwei/wit init
 
 | Tab | What it answers |
 |---|---|
+| **Status** | Where things stand right now, without asking Claude: what waits on you (questions, plans to approve, go-aheads, a failing sign-in), the background commands, agents, monitors and CI still running with when each should finish (the usual time for the same kind of work, flagged when it runs past it), the sessions at work with their branch and worktree, and what finished in the last six hours. It refreshes every ten seconds. |
 | **Health** | One scorecard for the whole cycle: plan, code, review, test, build & CI, deploy, operate and AI efficiency, each good / needs a look / bad / no data, with the numbers and targets behind it and how to turn on a stage with no data. |
 | **Delivery** | The four DORA metrics (deploy frequency, lead time for changes, change failure rate, time to restore) with their State of DevOps bands, deploys per week, the lead-time distribution, CI pass rate per workflow, and recent deploys with what failed and how fast it was fixed. |
 | **Tests** | The testing pyramid by layer (unit, integration, end-to-end), sized by share so an inverted suite shows. Click a layer for a treemap of its modules, then files, classes and single tests; use the trail to zoom out, or group by feature instead. Every level shows test count, pass/fail/not run, flaky tests, time and line and branch coverage, plus coverage and failures over time and the slowest tests. |
@@ -161,7 +162,7 @@ Optional settings in `.claude/wit.json` (every key optional):
 
 ### Use it from Claude
 
-The plugin's `morpheus` MCP server exposes read-only tools: `morpheus_overview`, `morpheus_live`, `morpheus_items`, `morpheus_item`, `morpheus_timeline`, `morpheus_coverage`, `morpheus_tokens`, `morpheus_inventory`, `morpheus_projects`, and for the SDLC tabs `morpheus_health`, `morpheus_dora`, `morpheus_tests`, `morpheus_tasks`, `morpheus_resources` and `morpheus_quality`. To add it without the plugin:
+The plugin's `morpheus` MCP server exposes read-only tools: `morpheus_overview`, `morpheus_live`, `morpheus_items`, `morpheus_item`, `morpheus_timeline`, `morpheus_coverage`, `morpheus_tokens`, `morpheus_inventory`, `morpheus_projects`, and for the SDLC tabs `morpheus_status`, `morpheus_health`, `morpheus_dora`, `morpheus_tests`, `morpheus_tasks`, `morpheus_resources` and `morpheus_quality`. To add it without the plugin:
 
 ```bash
 claude mcp add morpheus -- npx -y github:niiashikwei/wit mcp
@@ -205,7 +206,7 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 
 ## Testing
 
-Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R53). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R55). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
 
 | Suite | Covers |
 |---|---|
@@ -216,7 +217,7 @@ Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R53). Every test i
 | `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
 | `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
 | `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter, Morpheus MCP wiring (R21, R34) |
-| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions (R46–R53), tagged `// @req` |
+| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions and the Status tab (R46–R55), tagged `// @req` |
 | `test_traceability.py` | Every requirement has a test; every Morpheus test is tagged |
 
 The Python tests run the scripts exactly as Claude Code does (a fresh process with JSON on stdin) against an isolated data directory.
