@@ -47,6 +47,10 @@ create table if not exists marks (
   session text not null, at integer not null, type text not null, primary key (session, at, type)
 );
 create table if not exists meta (key text primary key, value text);
+create table if not exists prs (
+  repo text not null, number integer not null, url text, session text, first_at integer not null,
+  last_at integer not null, primary key (repo, number)
+);
 create table if not exists commits (
   sha text primary key, at integer not null, authored_at integer not null, author text,
   subject text, ai integer not null default 0, is_merge integer not null default 0,
@@ -97,9 +101,9 @@ create table if not exists disk_samples (
 `;
 
 /** Raise when the tables change: an older store is dropped and read again from the transcripts. */
-const VERSION = 2;
+const VERSION = 3;
 const TABLES = [
-  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "commits",
+  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "commits",
   "commit_files", "deploys", "ci_runs", "incidents", "test_reports", "test_cases",
   "coverage_files", "resource_samples", "disk_samples",
 ];

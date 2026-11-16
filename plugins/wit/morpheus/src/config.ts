@@ -14,11 +14,14 @@ export interface CoverageSource {
 
 export interface WitConfig {
   /**
-   * What counts as a deploy: "main" (each change landing on the main branch), "tag:<glob>"
+   * What counts as a deploy: "auto" (release tags if the project has them, else "main"), "main"
+   * (each change landing on the main branch), "tag:<glob>"
    * (matching tags), "gh-deployments" (GitHub deployments) or "gh-workflow:<name>" (successful
    * runs of a workflow on the main branch).
    */
   deploy: string;
+  /** Set when "auto" (the default) chose the deploy rule from the project's tags. */
+  deployDetected?: boolean;
   /** The main branch; by default the first of main, master, trunk that exists. */
   mainBranch: string | null;
   /** Read GitHub (CI runs, deployments, incident issues) through the `gh` CLI. Off by default. */
@@ -40,7 +43,7 @@ export interface WitConfig {
 }
 
 export const DEFAULTS: WitConfig = {
-  deploy: "main",
+  deploy: "auto",
   mainBranch: null,
   gh: false,
   incidentLabel: "incident",
@@ -62,7 +65,7 @@ const isGlobMap = (v: unknown): v is Record<string, string[]> =>
 export function normalise(raw: unknown): WitConfig {
   const c: Record<string, unknown> = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as never) : {};
   const out: WitConfig = { ...DEFAULTS };
-  if (typeof c.deploy === "string" && /^(main|tag:.+|gh-deployments|gh-workflow:.+)$/.test(c.deploy))
+  if (typeof c.deploy === "string" && /^(auto|main|tag:.+|gh-deployments|gh-workflow:.+)$/.test(c.deploy))
     out.deploy = c.deploy;
   if (typeof c.mainBranch === "string" && c.mainBranch) out.mainBranch = c.mainBranch;
   if (typeof c.gh === "boolean") out.gh = c.gh;

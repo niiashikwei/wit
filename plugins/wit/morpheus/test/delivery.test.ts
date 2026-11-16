@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { DEFAULTS, globRe, loadConfig, matches, normalise } from "../src/config.ts";
 import { bandOf, ciSummary, dora, doraRange, failures, histogram } from "../src/dora.ts";
 import { ghRunner, ingestGh, normaliseStatus } from "../src/gh.ts";
-import { git, gitDeploys, gitOut, ingestGit, isAI, isHotfix, leadFrom, mainBranch, parseLog, renamed, revertOf, type Commit } from "../src/git.ts";
+import { git, gitDeploys, gitOut, ingestGit, isAI, isHotfix, leadFrom, mainBranch, parseLog, renamed, resolveDeploy, revertOf, type Commit } from "../src/git.ts";
 import { getMeta, openStore, setMeta } from "../src/store.ts";
 import { DAY, HOUR, lines, Repo, tmp } from "./sdlc-helpers.ts";
 
@@ -114,7 +114,7 @@ test("git outside a repository answers null, and the main branch is found or con
   assert.equal(gitOut(tmp(), ["rev-parse", "HEAD"]), "");
   const r = new Repo("master");
   r.commit("init", { "a.txt": "a" }, T0);
-  assert.equal(mainBranch(r.root, { mainBranch: null }), "master");
+  assert.equal(mainBranch(r.root, { mainBranch: null }), "refs/heads/master");
   assert.equal(mainBranch(r.root, { mainBranch: "develop" }), null);
   assert.equal(mainBranch(tmp(), { mainBranch: null }), null);
   const db = openStore(":memory:");
@@ -166,9 +166,9 @@ test("tag deploys: matching tags are deploys, each with the median lead time of 
   assert.deepEqual(d.map((x) => x.id), ["tag:v1.0.0", "tag:v1.1.0"]);
   assert.ok(d[1].lead_ms >= DAY && d[1].lead_ms <= 2 * DAY);
   // Changing the rule remakes the deploys without new commits.
-  ingestGit(db, r.root, cfg());
+  ingestGit(db, r.root, cfg({ deploy: "main" }));
   assert.equal((db.prepare("select count(*) as n from deploys").get() as any).n, 3);
-  ingestGit(db, r.root, cfg());
+  ingestGit(db, r.root, cfg({ deploy: "main" }));
   // A GitHub rule leaves no git deploys; an unknown tag commit leaves the lead time empty.
   gitDeploys(db, r.root, cfg({ deploy: "gh-deployments" }));
   assert.equal((db.prepare("select count(*) as n from deploys").get() as any).n, 0);
@@ -386,4 +386,59 @@ test("store notes are kept by key and replaced on write", () => {
   setMeta(db, "k", "1");
   setMeta(db, "k", "2");
   assert.equal(getMeta(db, "k"), "2");
+});
+
+// @req R49
+test("the main branch is the remote's default branch, read from whichever copy is ahead", () => {
+  const r = new Repo("main");
+  const a = r.commit("one", { "a.txt": "1" }, T0);
+  const b = r.commit("two", { "a.txt": "2" }, T0 + HOUR);
+  // Work landed on the remote from another worktree; the local main is behind.
+  r.git("update-ref", "refs/remotes/origin/main", b);
+  r.git("reset", "-q", "--hard", a);
+  r.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+  assert.equal(mainBranch(r.root, { mainBranch: null }), "refs/remotes/origin/main");
+  const db = openStore(":memory:");
+  assert.equal(ingestGit(db, r.root, cfg({ deploy: "main" })), 2, "both commits, though local main has one");
+  // Committed locally and not pushed yet: the local copy is ahead.
+  r.git("reset", "-q", "--hard", b);
+  r.commit("three", { "a.txt": "3" }, T0 + 2 * HOUR);
+  assert.equal(mainBranch(r.root, { mainBranch: null }), "refs/heads/main");
+  // Only a remote copy, under the configured name.
+  r.git("update-ref", "refs/remotes/origin/trunk", b);
+  assert.equal(mainBranch(r.root, { mainBranch: "trunk" }), "refs/remotes/origin/trunk");
+  // The remote's default comes before the usual names.
+  r.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
+  assert.equal(mainBranch(r.root, { mainBranch: null }), "refs/remotes/origin/trunk");
+});
+
+// @req R49
+test("the deploy rule defaults to auto: release tags when there are two or more, else each change on main", () => {
+  assert.equal(DEFAULTS.deploy, "auto");
+  assert.equal(normalise({ deploy: "auto" }).deploy, "auto");
+  const r = new Repo();
+  r.commit("one", { "a.txt": "1" }, T0);
+  assert.deepEqual([resolveDeploy(r.root, cfg()).deploy, resolveDeploy(r.root, cfg()).deployDetected], ["main", true]);
+  r.tag("v1.0.0", T0 + HOUR);
+  r.tag("nightly", T0 + HOUR);
+  assert.equal(resolveDeploy(r.root, cfg()).deploy, "main", "one release tag is not a habit yet");
+  r.tag("v1.0.1", T0 + 2 * HOUR);
+  assert.equal(resolveDeploy(r.root, cfg()).deploy, "tag:v*");
+  const kept = resolveDeploy(r.root, cfg({ deploy: "gh-deployments" }));
+  assert.deepEqual([kept.deploy, kept.deployDetected], ["gh-deployments", undefined], "a rule set in wit.json is kept");
+  const rel = new Repo();
+  rel.commit("one", { "a.txt": "1" }, T0);
+  for (const t of ["release-1", "release-2", "3.0.0"]) rel.tag(t, T0 + HOUR);
+  assert.equal(resolveDeploy(rel.root, cfg()).deploy, "tag:release*");
+  const num = new Repo();
+  num.commit("one", { "a.txt": "1" }, T0);
+  for (const t of ["1.0", "1.1", "v2.0"]) num.tag(t, T0 + HOUR);
+  assert.equal(resolveDeploy(num.root, cfg()).deploy, "tag:[0-9]*");
+  // Through ingest and DORA: tags become the deploys, and the rule says it was picked.
+  const db = openStore(":memory:");
+  ingestGit(db, r.root, cfg());
+  assert.deepEqual((db.prepare("select id from deploys order by at").all() as any[]).map((d) => d.id), ["tag:v1.0.0", "tag:v1.0.1"]);
+  const d = dora(db, "all", T0 + 3 * HOUR, resolveDeploy(r.root, cfg()));
+  assert.deepEqual([d.rule, d.ruleDetected], ["tag:v*", true]);
+  assert.equal(dora(db, "all", T0 + 3 * HOUR, cfg({ deploy: "tag:v*" })).ruleDetected, false);
 });

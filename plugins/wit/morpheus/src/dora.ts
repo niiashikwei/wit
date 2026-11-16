@@ -118,6 +118,7 @@ export function dora(db: DatabaseSync, range: Range, now: number, cfg: WitConfig
     range: used,
     source,
     rule: cfg.deploy,
+    ruleDetected: !!cfg.deployDetected,
     deploys: inRange.length,
     frequency: { perDay, perWeek: perDay * 7, band: inRange.length ? bandOf.frequency(perDay) : null },
     leadTime: { p50: leadP50, p90: percentile(leads, 90), samples: leads.length, band: bandOf.leadTime(leadP50) },

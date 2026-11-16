@@ -761,7 +761,8 @@ export function coverage(db: DatabaseSync, now: number, def: Defined, range: Ran
   for (const name of agentRuns.keys())
     if (!defAgents.has(name)) rows.push(used("agent", name, agentRuns));
   const totals: Record<string, number> = { active: 0, missed: 0, idle: 0, off: 0 };
-  for (const r of rows) totals[r.status] = (totals[r.status] ?? 0) + 1;
+  // Every status a row can have starts at zero.
+  for (const r of rows) totals[r.status]!++;
   return { now, from, range, totals, rows };
 }
 

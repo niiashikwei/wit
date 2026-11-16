@@ -42,7 +42,7 @@ export function worst(ms          )         {
                                
                                                                                                                                                                                                                                                                     
                                                                                    
-                                                                                                                                                                                   
+                                                                                                                                                                                             
                                                                                                                         
                 
  
@@ -109,7 +109,9 @@ export function health(db              , range       , now        , x           
       metrics: [
         m("Cache hit rate", x.tasks.totals.cacheHit, "pct", "≥ 70%", grade(x.tasks.totals.cacheHit, 0.7, 0.5, true)),
         m("Tool calls failing", x.quality.process.toolErrorRate, "pct", "≤ 5%", grade(x.quality.process.toolErrorRate, 0.05, 0.1, false)),
-        m("Compactions a session", x.quality.process.compactionsPerSession, "ratio", "≤ 0.5", grade(x.quality.process.compactionsPerSession, 0.5, 1, false)),
+        // Each reply re-reads the conversation: a long session pays for its history on every turn,
+        // however well the cache serves it. Compacting or starting fresh is what brings this down.
+        m("Context carried per reply", x.quality.efficiency.contextPerReply, "count", "≤ 150k tokens", grade(x.quality.efficiency.contextPerReply, 150_000, 300_000, false)),
       ],
       hint: null, status: "unknown",
     },

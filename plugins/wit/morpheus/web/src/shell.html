@@ -615,7 +615,7 @@ function subscribe() {
   }
   state.unsub = [
     watch("morpheus_live", { ...(state.session ? { session: state.session } : {}), ...(state.branch ? { branch: state.branch } : {}) }, (d) => { state.live = d; renderLive(); }),
-    watch("morpheus_overview", scopeArgs(), (d) => { state.overview = d; renderOverview(); }, "err-overview"),
+    watch("morpheus_overview", scopeArgs(), (d) => { state.overview = d; renderOverview(); syncProject(); }, "err-overview"),
     watch("morpheus_timeline", tlArgs(), (d) => { state.tl = d; renderTimeline(); }, "err-tl"),
     watch("morpheus_coverage", { range: "7d" }, (d) => { state.cov = d; renderCoverage(); }, "err-cov"),
     watch("morpheus_tokens", scopeArgs(), (d) => { state.tok = d; renderTokens(); }, "err-tok"),
@@ -630,7 +630,7 @@ $("#refresh").onclick = async () => {
   try {
     await Promise.all([
       call("morpheus_live", {}).then((d) => { state.live = d; renderLive(); }),
-      call("morpheus_overview", scopeArgs()).then((d) => { state.overview = d; renderOverview(); }),
+      call("morpheus_overview", scopeArgs()).then((d) => { state.overview = d; renderOverview(); syncProject(); }),
       call("morpheus_timeline", tlArgs()).then((d) => { state.tl = d; renderTimeline(); }),
       call("morpheus_coverage", { range: "7d" }).then((d) => { state.cov = d; renderCoverage(); }),
       call("morpheus_tokens", scopeArgs()).then((d) => { state.tok = d; renderTokens(); }),
@@ -1085,6 +1085,13 @@ function pulse() {
   d.classList.remove("ping"); void d.offsetWidth; d.classList.add("ping");
 }
 
+// The picker shows the project being read: the one chosen, else the server's own, once it is known.
+function syncProject() {
+  const current = state.project ?? state.overview?.project ?? state.serverRoot;
+  const sel = $("#project");
+  if (current && sel.value !== current && [...sel.options].some((o) => o.value === current)) sel.value = current;
+}
+
 // The project picker: every project with Claude Code transcripts.
 async function loadProjects() {
   try {
@@ -1093,6 +1100,9 @@ async function loadProjects() {
     const current = state.project ?? state.overview?.project ?? "";
     sel.innerHTML = list.map((p) => `<option value="${esc(p.root)}"${p.root === current ? " selected" : ""}>${esc(p.root.split("/").slice(-2).join("/"))} · ${p.sessions} sessions</option>`).join("");
     if (current && !list.some((p) => p.root === current)) sel.insertAdjacentHTML("afterbegin", `<option value="${esc(current)}" selected>${esc(current.split("/").slice(-2).join("/"))}</option>`);
+    syncProject();
+    // Tabs other than Hooks & agents never load the overview: ask the server which project it reads.
+    if (!state.project && !state.overview) call("morpheus_inventory", {}).then((d) => { state.serverRoot = d.root; syncProject(); }).catch(() => {});
   } catch { $("#project").closest("label").hidden = true; }
 }
 $("#project").addEventListener("change", (e) => {

@@ -214,7 +214,35 @@ export function parseGoCover(text: string, module: string | null = null): FileCo
   return [...by.values()];
 }
 
-export type ReportKind = "junit" | "lcov" | "cobertura" | "jacoco" | "json" | "go";
+/** Jest's and Vitest's JSON results (`--json`, the json reporter): each test with its file and time. */
+export function parseJestJson(text: string): TestCase[] {
+  let j: any;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const out: TestCase[] = [];
+  for (const r of Array.isArray(j?.testResults) ? j.testResults : []) {
+    const file = typeof r?.name === "string" ? r.name : null;
+    for (const a of Array.isArray(r?.assertionResults) ? r.assertionResults : []) {
+      const name = String(a?.title ?? a?.fullName ?? "");
+      if (!name) continue;
+      const suite = Array.isArray(a.ancestorTitles) && a.ancestorTitles.length ? a.ancestorTitles.join(" > ") : null;
+      out.push({
+        id: `${file ?? ""}::${a.fullName ?? name}`,
+        name,
+        suite,
+        file,
+        durationMs: typeof a.duration === "number" ? Math.round(a.duration) : null,
+        status: a.status === "passed" ? "passed" : a.status === "failed" ? "failed" : "skipped",
+      });
+    }
+  }
+  return out;
+}
+
+export type ReportKind = "junit" | "jest" | "lcov" | "cobertura" | "jacoco" | "json" | "go";
 
 /** What a report is, from its name and first bytes. */
 export function sniff(path: string, head: string): ReportKind | null {
@@ -223,6 +251,7 @@ export function sniff(path: string, head: string): ReportKind | null {
   if (/<testsuites?\b|<testcase\b/.test(head)) return "junit";
   if (/<!DOCTYPE report|<report\b[^>]*name=/.test(head) && /<(package|sessioninfo)\b/.test(head)) return "jacoco";
   if (/<coverage\b/.test(head)) return "cobertura";
+  if (/^\s*\{/.test(head) && path.endsWith(".json") && /"(numTotalTests|testResults)"\s*:/.test(head)) return "jest";
   if (/^\s*\{/.test(head) && path.endsWith(".json")) return "json";
   return null;
 }
@@ -237,7 +266,72 @@ export const REPORT_GLOBS = [
   "junit.xml", "test-results.xml", "report.xml", "test-results/**/*.xml", "test-reports/**/*.xml",
   "reports/**/*.xml", "coverage/junit.xml", "target/surefire-reports/*.xml", "target/failsafe-reports/*.xml",
   "build/test-results/**/*.xml", ".wit/**/*.{xml,info,json,out}",
+  "test-results.json", "coverage/test-results.json", "jest-results.json", "vitest-results.json",
 ];
+
+/** Folders that hold a monorepo's packages, when package.json names none. */
+const WORKSPACES = ["apps", "packages", "libs", "services", "modules", "crates"];
+
+/**
+ * The report globs again under each package of a monorepo: the folders package.json's
+ * `workspaces` names (`apps/*`), else the usual ones that exist.
+ */
+export function workspaceGlobs(base: string, globs = REPORT_GLOBS): string[] {
+  let named: string[] = [];
+  try {
+    const w = JSON.parse(readFileSync(join(base, "package.json"), "utf8")).workspaces;
+    const list = Array.isArray(w) ? w : Array.isArray(w?.packages) ? w.packages : [];
+    named = list.filter((x: unknown): x is string => typeof x === "string" && !x.startsWith("!")).map((x: string) => x.replace(/\/+$/, ""));
+  } catch {
+    /* no package.json, or not JSON */
+  }
+  const dirs = named.length ? named : WORKSPACES.filter((d) => existsSync(join(base, d))).map((d) => `${d}/*`);
+  return dirs.flatMap((d) => globs.map((g) => `${d}/${g}`));
+}
+
+/** At most this many worktrees are searched for reports, the most recently changed first. */
+const MAX_WORKTREES = 20;
+
+/**
+ * Every report the project has, by its path in the project: in the checkout, its packages, and its
+ * worktrees under .claude/worktrees (where work often runs). Where copies differ, the newest wins.
+ */
+export function findReports(root: string, extra: string[] = []): Map<string, string> {
+  const wtDir = join(root, ".claude", "worktrees");
+  let worktrees: string[] = [];
+  try {
+    worktrees = readdirSync(wtDir)
+      .map((n) => join(wtDir, n))
+      .filter((d) => statSync(d).isDirectory())
+      .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+      .slice(0, MAX_WORKTREES);
+  } catch {
+    /* no worktrees */
+  }
+  const best = new Map<string, { full: string; at: number }>();
+  for (const base of [root, ...worktrees])
+    for (const p of findFiles(base, [...REPORT_GLOBS, ...workspaceGlobs(base), ...extra])) {
+      const full = join(base, p);
+      const at = statSync(full).mtimeMs;
+      const had = best.get(p);
+      if (!had || at > had.at) best.set(p, { full, at });
+    }
+  return new Map([...best].map(([p, v]) => [p, v.full]));
+}
+
+/**
+ * A file named in a report, as a path in the project: absolute paths made relative (a worktree's
+ * path counts as the project's), and a path relative to the report's package joined to it.
+ */
+export function projectPath(root: string, reportFull: string, reportRel: string, file: string): string {
+  if (isAbsolute(file)) return rel(root, file);
+  const base = reportFull.slice(0, reportFull.length - reportRel.length);
+  // The package a report belongs to: the folder above its coverage/reports folder, else its own folder.
+  const m = reportRel.match(/^(.*?)\/(?:coverage|reports?|test-results|test-reports|target|build)\//);
+  const pkg = m ? m[1]! : reportRel.includes("/") ? reportRel.slice(0, reportRel.lastIndexOf("/")) : "";
+  if (pkg && !existsSync(join(base, file)) && existsSync(join(base, pkg, file))) return `${pkg}/${file.replace(/^\.\//, "")}`;
+  return file.replace(/^\.\//, "");
+}
 
 /** Lists files under `root` matching globs, without descending into dependency or VCS folders. */
 export function findFiles(root: string, globs: string[], max = 2000): string[] {
@@ -274,7 +368,8 @@ export function findFiles(root: string, globs: string[], max = 2000): string[] {
 export const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "__pycache__", "vendor", ".tox", ".mypy_cache", ".pytest_cache", "worktrees"]);
 
 /** A report path as the project sees it: relative to the root, forward slashes. */
-export const rel = (root: string, p: string) => (isAbsolute(p) ? relative(root, p) : p).split("\\").join("/").replace(/^\.\//, "");
+export const rel = (root: string, p: string) =>
+  (isAbsolute(p) ? relative(root, p) : p).split("\\").join("/").replace(/^\.\//, "").replace(/^\.claude\/worktrees\/[^/]+\//, "");
 
 const KEEP = 60;
 
@@ -284,11 +379,10 @@ const KEEP = 60;
  */
 export function ingestReports(db: DatabaseSync, root: string, cfg: WitConfig): number {
   const layerOf = new Map(cfg.coverageReports.filter((c) => c.layer).map((c) => [rel(root, c.path), c.layer!]));
-  const paths = new Set([...findFiles(root, [...REPORT_GLOBS, ...cfg.testReports]), ...cfg.coverageReports.map((c) => rel(root, c.path))]);
+  const found = findReports(root, [...cfg.testReports, ...cfg.coverageReports.map((c) => rel(root, c.path))]);
   const module = goModule(root);
   let n = 0;
-  for (const p of paths) {
-    const full = join(root, p);
+  for (const [p, full] of found) {
     let text: string;
     let st;
     try {
@@ -307,15 +401,17 @@ export function ingestReports(db: DatabaseSync, root: string, cfg: WitConfig): n
     const layer = layerOf.get(p) ?? null;
     db.exec("begin immediate");
     try {
-      stmt(db, "insert into test_reports (path, hash, at, kind, framework, layer) values (?, ?, ?, ?, ?, ?)").run(p, hash, at, kind === "junit" ? "tests" : "coverage", kind, layer);
-      if (kind === "junit") {
+      const tests = kind === "junit" || kind === "jest";
+      const where = (f: string) => projectPath(root, full, p, f);
+      stmt(db, "insert into test_reports (path, hash, at, kind, framework, layer) values (?, ?, ?, ?, ?, ?)").run(p, hash, at, tests ? "tests" : "coverage", kind, layer);
+      if (tests) {
         const put = stmt(db, "insert or replace into test_cases (report, id, name, suite, file, duration_ms, status, at) values (?, ?, ?, ?, ?, ?, ?, ?)");
-        for (const t of parseJUnit(text)) put.run(id, t.id, t.name, t.suite, t.file ? rel(root, t.file) : null, t.durationMs, t.status, at);
+        for (const t of kind === "junit" ? parseJUnit(text) : parseJestJson(text)) put.run(id, t.id, t.name, t.suite, t.file ? where(t.file) : null, t.durationMs, t.status, at);
       } else {
         const files =
           kind === "lcov" ? parseLcov(text) : kind === "cobertura" ? parseCobertura(text) : kind === "jacoco" ? parseJaCoCo(text) : kind === "go" ? parseGoCover(text, module) : parseCoverageJson(text);
         const put = stmt(db, "insert or replace into coverage_files (report, file, lines_total, lines_hit, branches_total, branches_hit, at, layer) values (?, ?, ?, ?, ?, ?, ?, ?)");
-        for (const f of files) put.run(id, rel(root, f.file), f.linesTotal, f.linesHit, f.branchesTotal, f.branchesHit, at, layer);
+        for (const f of files) put.run(id, where(f.file), f.linesTotal, f.linesHit, f.branchesTotal, f.branchesHit, at, layer);
       }
       // History, but not forever: the newest versions of each report.
       const old = db.prepare("select hash from test_reports where path = ? order by at desc limit -1 offset ?").all(p, KEEP) as { hash: string }[];

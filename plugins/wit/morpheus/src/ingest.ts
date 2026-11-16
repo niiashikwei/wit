@@ -30,7 +30,7 @@ const CHUNK = 8 * 1024 * 1024;
 /** A gap longer than this between an agent's lines is idle, not work. */
 const IDLE_MS = 15 * 60_000;
 // Only lines that can hold a record are parsed: a transcript is mostly model text.
-const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"/;
+const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"|"stop_hook_summary"|"api_error"|"pr-link"|"silent_turn_reminder"/;
 
 /**
  * Calls `onLine` for each complete line after the stored position, then stores the new one. Reads
@@ -166,6 +166,10 @@ export function apply(db: DatabaseSync, p: Parsed, agentId?: string, file?: stri
         r.toolUseId,
       );
   }
+  for (const r of p.prs ?? [])
+    stmt(db, `insert into prs (repo, number, url, session, first_at, last_at) values (?, ?, ?, ?, ?, ?)
+      on conflict (repo, number) do update set first_at = min(first_at, excluded.first_at), last_at = max(last_at, excluded.last_at)`,
+    ).run(r.repo, r.number, r.url, r.session, r.at, r.at);
   for (const m of p.marks ?? [])
     stmt(db, "insert or ignore into marks (session, at, type) values (?, ?, ?)").run(m.session, m.at, m.type);
   for (const q of p.prompts) {
@@ -263,6 +267,32 @@ function ingestAgentMeta(
   }
 }
 
+/**
+ * Every transcript to read in these folders, sessions first, then their agents. A session that moved
+ * between worktrees has a copy in each worktree's folder, the newest holding everything the older
+ * ones do: only the largest copy of each file is read.
+ */
+export function transcripts(dirs: string[]): { path: string; session: string; agent?: string; meta?: string }[] {
+  const best = new Map<string, { path: string; size: number; session: string; agent?: string; meta?: string }>();
+  const offer = (key: string, path: string, session: string, agent?: string, meta?: string) => {
+    const size = statSync(path).size;
+    const had = best.get(key);
+    if (!had || size > had.size) best.set(key, { path, size, session, agent, meta });
+  };
+  for (const dir of dirs)
+    for (const f of readdirSync(dir)) {
+      if (f.endsWith(".jsonl")) offer(f, join(dir, f), f.slice(0, -6));
+      const sub = join(dir, f, "subagents");
+      if (!existsSync(sub)) continue;
+      for (const s of readdirSync(sub)) {
+        const id = s.match(/^agent-([\w-]+)\.jsonl$/)?.[1];
+        if (id) offer(`${f}/${s}`, join(sub, s), f, id, join(sub, `agent-${id}.meta.json`));
+      }
+    }
+  // Sessions before agents, as a person reads them.
+  return [...best.values()].sort((a, b) => Number(!!a.agent) - Number(!!b.agent)).map(({ size, ...t }) => t);
+}
+
 export interface IngestOptions {
   root: string;
   /** Claude Code's transcripts folder (tests pass their own). */
@@ -278,19 +308,11 @@ export function ingest(db: DatabaseSync, opts: IngestOptions): number {
   // One writer at a time: the server and a manual ingest can run together.
   db.exec("begin immediate");
   try {
-    for (const dir of projectDirs(root, opts.projectsDir)) {
-      for (const f of readdirSync(dir)) {
-        if (f.endsWith(".jsonl")) lines += ingestTranscript(db, join(dir, f));
-        const sub = join(dir, f, "subagents");
-        if (!existsSync(sub)) continue;
-        const ids = readdirSync(sub)
-          .map((s) => s.match(/^agent-([\w-]+)\.jsonl$/)?.[1])
-          .filter((id): id is string => !!id);
-        for (const id of ids) lines += ingestTranscript(db, join(sub, `agent-${id}.jsonl`), id);
-        // After the transcripts: an agent's meta links it to the call in its parent's transcript.
-        for (const id of ids) ingestAgentMeta(db, join(sub, `agent-${id}.meta.json`), id, f);
-      }
-    }
+    const files = transcripts(projectDirs(root, opts.projectsDir));
+    for (const t of files) lines += ingestTranscript(db, t.path, t.agent);
+    // After every transcript: an agent's meta links it to the call that started it, which may be in
+    // its session's transcript or in another agent's.
+    for (const t of files) if (t.meta) ingestAgentMeta(db, t.meta, t.agent!, t.session);
     // The optional hook logs (paths.ts, logDirs), shared by every worktree.
     for (const state of opts.logDirs ?? logDirs(root)) {
       const events = join(state, "events.jsonl");

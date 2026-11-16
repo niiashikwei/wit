@@ -7,14 +7,45 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { costOf } from "./cost.ts";
+import { costOf, priceOf } from "./cost.ts";
 import { type Range, since } from "./metrics.ts";
+import { HEAVY_CONTEXT } from "./improvements.ts";
 import { latestCoverage } from "./pyramid.ts";
 
 const DAY = 86_400_000;
 export const REWORK_WINDOW = 14 * DAY;
 export const isTestPath = (p: string) => /(^|\/)(tests?|__tests__|spec|e2e|cypress)\/|[._-](test|spec)\.[^/]+$|(^|\/)test_[^/]+$|_test\.[^/]+$|(Test|IT|Spec)\.\w+$/.test(p);
 const isCode = (p: string) => /\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|scala|rb|php|cs|swift|c|cc|cpp|h|hpp|m|vue|svelte|ex|exs|dart|sh)$/.test(p);
+
+
+/**
+ * Context carried per reply, by session: every reply re-reads the whole conversation, so a long
+ * session pays for its history again on each turn even when the cache serves it. Agents count
+ * with the session that started them. Heaviest cache-read bill first.
+ */
+export function contextBySession(db: DatabaseSync, from: number, now: number) {
+  const rows = db
+    .prepare(
+      `select case when instr(session, '/agent-') > 0 then substr(session, 1, instr(session, '/agent-') - 1) else session end as s,
+        model, count(*) as replies, sum(tokens_in) as tin, sum(tokens_cached) as cached, sum(tokens_out) as tout,
+        sum(tokens_write) as tw, max(at) as last_at
+         from usage where at >= ? and at <= ? and coalesce(model, '') <> '<synthetic>' group by s, model`,
+    )
+    .all(from, now) as { s: string; model: string | null; replies: number; tin: number; cached: number; tout: number; tw: number; last_at: number }[];
+  const by = new Map<string, { session: string; replies: number; context: number; cacheReadCost: number; cost: number; lastAt: number }>();
+  for (const r of rows) {
+    const x = by.get(r.s) ?? { session: r.s, replies: 0, context: 0, cacheReadCost: 0, cost: 0, lastAt: 0 };
+    x.replies += r.replies;
+    x.context += r.tin + r.cached;
+    x.cacheReadCost += (r.cached * (priceOf(r.model)?.cacheRead ?? 0)) / 1e6;
+    x.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+    x.lastAt = Math.max(x.lastAt, r.last_at);
+    by.set(r.s, x);
+  }
+  return [...by.values()]
+    .map(({ context, ...x }) => ({ ...x, contextPerReply: context / x.replies }))
+    .sort((a, b) => b.cacheReadCost - a.cacheReadCost);
+}
 
 interface FileRow { sha: string; path: string; added: number; deleted: number; at: number; ai: number }
 
@@ -67,6 +98,19 @@ export function quality(db: DatabaseSync, root: string, range: Range, now: numbe
   const cached = usage.reduce((s, u) => s + u.tokens_cached, 0);
   const cost = usage.reduce((s, u) => s + costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write }), 0);
   const aiAdded = ai.reduce((s, c) => s + c.added, 0);
+  const sessionsCtx = contextBySession(db, from, now);
+  const replies = sessionsCtx.reduce((s, x) => s + x.replies, 0);
+  const cacheReadCost = sessionsCtx.reduce((s, x) => s + x.cacheReadCost, 0);
+  // Time hooks hold the work up: those that run before a prompt, a tool call or a turn's end wait
+  // in line; PostToolUse and SessionStart hooks are left out (they rarely gate the next step).
+  const wait = db
+    .prepare(
+      `select coalesce(sum(duration_ms), 0) as ms, count(duration_ms) as runs from runs where kind = 'hook' and started_at >= ? and started_at <= ?
+         and (detail like 'PreToolUse%' or detail like 'UserPromptSubmit%' or detail like 'PermissionRequest%' or detail in ('Stop', 'SubagentStop'))`,
+    )
+    .get(from, now) as { ms: number; runs: number };
+  const prompts = Number((db.prepare("select count(*) as n from prompts where at >= ? and at <= ?").get(from, now) as { n: number }).n);
+  const prs = Number((db.prepare("select count(*) as n from prs where last_at >= ?").get(from) as { n: number }).n);
   const marks = db.prepare("select type, count(*) as n from marks where at >= ? group by type").all(from) as { type: string; n: number }[];
   const mark = (t: string) => Number(marks.find((m) => m.type === t)?.n ?? 0);
   const sessions = Number((db.prepare("select count(distinct session) as n from prompts where at >= ?").get(from) as { n: number }).n);
@@ -121,6 +165,11 @@ export function quality(db: DatabaseSync, root: string, range: Range, now: numbe
       costPerCommit: ai.length ? cost / ai.length : null,
       tokensPerLine: aiAdded ? tokensNew / aiAdded : null,
       cacheHit: cached + tokensIn ? cached / (cached + tokensIn) : null,
+      // What carrying the conversation costs: context re-read on each reply, and its share of the bill.
+      contextPerReply: replies ? sessionsCtx.reduce((s, x) => s + x.contextPerReply * x.replies, 0) / replies : null,
+      cacheReadCost,
+      cacheReadShare: cost ? cacheReadCost / cost : null,
+      heavySessions: sessionsCtx.filter((x) => x.contextPerReply > HEAVY_CONTEXT).slice(0, 8),
     },
     process: {
       sessions,
@@ -132,6 +181,11 @@ export function quality(db: DatabaseSync, root: string, range: Range, now: numbe
       correctionRate: tasks?.tasks ? tasks.corrected / tasks.tasks : null,
       toolCalls: toolTotal,
       toolErrorRate: toolTotal ? toolErrors / toolTotal : null,
+      hookWaitMs: Number(wait.ms),
+      hookWaitPerPrompt: prompts && wait.runs ? Number(wait.ms) / prompts : null,
+      apiErrors: mark("api_error"),
+      silentTurns: mark("silent"),
+      prs,
     },
     tests: { all: testLines(files), ai: testLines(files.filter((f) => f.ai)) },
     hotspots,

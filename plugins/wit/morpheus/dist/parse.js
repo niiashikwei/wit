@@ -78,8 +78,13 @@
                           
                                                                                   
                     
-                                                                                                
-                                                                                      
+     
+                                                                                              
+                                                                                             
+     
+                                                                                                               
+                                                        
+                                                                                            
  
 
 const EXCERPT = 240;
@@ -253,6 +258,7 @@ const empty = ()         => ({
   lastText: null,
   at: null,
   marks: [],
+  prs: [],
 });
 
 /** A tool result that says the person turned the call down. */
@@ -279,6 +285,34 @@ export function parseTranscriptLine(line        , opts                     = {})
     out.marks .push({ session, at, type: "compact" });
     return out;
   }
+  if (row.type === "system" && row.subtype === "api_error") {
+    out.marks .push({ session, at, type: "api_error" });
+    return out;
+  }
+  if (row.type === "pr-link") {
+    if (Number.isInteger(row.prNumber) && typeof row.prRepository === "string")
+      out.prs .push({ session, at, repo: row.prRepository, number: row.prNumber, url: typeof row.prUrl === "string" ? row.prUrl : null });
+    return out;
+  }
+  // Stop hooks are summed up in one line: each command that ran, its time, and whether it stopped the turn.
+  if (row.type === "system" && row.subtype === "stop_hook_summary") {
+    const event = String(row.hookEvent ?? "Stop");
+    const failed = Array.isArray(row.hookErrors) && row.hookErrors.length > 0;
+    (Array.isArray(row.hookInfos) ? row.hookInfos : []).forEach((h     , i        ) => {
+      if (typeof h?.command !== "string" || h.command === "callback") return;
+      const name = hookScript(h.command, event);
+      out.runs.push({
+        session, branch: row.gitBranch || null, cwd: row.cwd || null, startedAt: at,
+        id: `hook:${row.toolUseID ?? row.uuid}:${event}:${name}:${i}`,
+        kind: "hook", name, detail: event,
+        durationMs: typeof h.durationMs === "number" ? h.durationMs : null,
+        outcome: row.preventedContinuation ? "block" : failed ? "error" : "ok",
+        toolUseId: null, trigger: null,
+        output: redact(failed ? row.hookErrors.map(String).join("\n") : row.stopReason || null),
+      });
+    });
+    return out;
+  }
   const base = {
     session,
     branch: row.gitBranch || null,
@@ -287,6 +321,10 @@ export function parseTranscriptLine(line        , opts                     = {})
   };
 
   const a = row.type === "attachment" ? row.attachment : null;
+  if (a?.type === "silent_turn_reminder") {
+    out.marks .push({ session, at, type: "silent" });
+    return out;
+  }
   if (a && typeof a.type === "string" && a.type.startsWith("hook_")) {
     const event = String(a.hookName ?? a.hookEvent ?? "hook");
     // What a prompt hook added to the turn: often which skills apply. Metrics read the skill

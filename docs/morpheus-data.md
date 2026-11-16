@@ -91,12 +91,15 @@ Risk runs from 0 to 3: how much the problem lets slip through. The rules cover t
 | Source | Where | Gives |
 |---|---|---|
 | git | the project's repository, read with `git log --numstat` from the main branch (main, master or trunk, or `mainBranch`) | commits, files and lines, landings on main, Claude co-authorship, reverts, tags |
-| Test reports | JUnit XML, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON, Go profiles in their usual output paths, plus `coverageReports` / `testReports` | test results and times, line and branch coverage per file, kept per version (by content hash, newest 60) |
+| Test reports | JUnit XML, Jest/Vitest JSON, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON, Go profiles in their usual output paths, in monorepo packages (`workspaces`, else apps/packages/libs/services/modules/crates) and in `.claude/worktrees/*` (newest copy wins), plus `coverageReports` / `testReports` | test results and times, line and branch coverage per file, kept per version (by content hash, newest 60) |
 | Test source | test files by language convention | every test, its class or `describe`, and tags above it (`// @req R12`, `@req("R1")`, `@feature(x)`) |
 | `ps`, the OS | sampled every 5 s while the Resources tab is open; `du` every 10 min | CPU and memory per process group, machine load, memory and free disk, disk footprint |
 | GitHub (opt-in) | `gh run list`, `gh api …/deployments`, `gh issue list --label incident` | CI runs, deployments and their status, incidents |
 
-- **Deploy:** per `deploy` in `.claude/wit.json`: each landed commit (`main`), matching tags (`tag:<glob>`), GitHub deployments, or successful runs of a GitHub workflow.
+- **Deploy:** per `deploy` in `.claude/wit.json`: `auto` by default (release tags when there are two or more, else `main`), each landed commit (`main`), matching tags (`tag:<glob>`), GitHub deployments, or successful runs of a GitHub workflow. The main branch is the remote's default (`origin/HEAD`), read from the local or remote copy, whichever is ahead.
+- **Context per reply:** new input plus cached reads per model reply, the conversation each reply re-reads. Sessions over 200k a reply are listed with their cache-read cost.
+- **Hook wait:** total time of UserPromptSubmit, PreToolUse, PermissionRequest, Stop and SubagentStop hooks, per human prompt.
+- **Transcripts:** a session copied into several worktree folders is read once, from its largest copy. Stop hook summaries, retried API errors, quiet-turn reminders and PR links are read too.
 - **Lead time:** a deploy's time minus when its work started: for a merge, the earliest author time of the commits it brought in; for a squash or direct commit, its author time; for a tag, the median over the commits since the previous tag.
 - **Failed deploy:** a revert of a commit it shipped, or a hotfix/rollback commit or an incident after it, within `failureWindowHours` (72 h); or its own failed status. **Time to restore** runs to the fix (or the incident's close, or the next good deploy).
 - **Bands** (State of DevOps): frequency daily+/weekly+/monthly+; lead time < 1 day / < 1 week / < 1 month; failure rate ≤ 5% / 10% / 15%; restore < 1 h / < 1 day / < 1 week.

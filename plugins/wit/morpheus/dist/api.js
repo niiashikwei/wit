@@ -25,14 +25,14 @@ import {
 import { dbPath, listProjects, projectRoot } from "./paths.js";
 import { openStore } from "./store.js";
 import { loadConfig,                } from "./config.js";
-import { ingestGit } from "./git.js";
+import { ingestGit, resolveDeploy } from "./git.js";
 import { ingestGh,             } from "./gh.js";
 import { dora } from "./dora.js";
 import { ingestReports } from "./testreports.js";
 import { allTests, discover,                                latestCoverage, pyramidNode, testHistory } from "./pyramid.js";
 import {                tasksReport } from "./tasks.js";
 import { diskSample, resources, sample } from "./resources.js";
-import { quality } from "./quality.js";
+import { contextBySession, quality } from "./quality.js";
 import { health } from "./health.js";
 
 const RANGES          = ["1h", "today", "7d", "30d", "all"];
@@ -83,7 +83,7 @@ export function project(root                , opts                              
       defAt: Date.now(),
       readAt: 0,
       projectsDir: opts.projectsDir,
-      cfg: loadConfig(r),
+      cfg: resolveDeploy(r, loadConfig(r)),
       sdlcAt: 0,
       found: null,
       foundAt: 0,
@@ -113,7 +113,7 @@ export function refresh(p         , minMs = 2000)         {
 export function refreshSdlc(p         , now = Date.now(), minMs = 15_000)         {
   if (now - p.sdlcAt < minMs) return 0;
   p.sdlcAt = now;
-  p.cfg = loadConfig(p.root);
+  p.cfg = resolveDeploy(p.root, loadConfig(p.root));
   return ingestGit(p.db, p.root, p.cfg) + ingestReports(p.db, p.root, p.cfg) + ingestGh(p.db, p.root, p.cfg, now, p.gh);
 }
 
@@ -187,6 +187,7 @@ export function improvements(p         , now        ) {
     defined: def,
     coverage: coverage(db, now, def).rows,
     tokens: tokens(db, scope, now, def)         ,
+    sessions: contextBySession(db, since("7d", now), now),
     lastActivity: last,
     timingSince: o.kpis.timingSince,
   });

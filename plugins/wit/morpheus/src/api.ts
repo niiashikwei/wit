@@ -25,14 +25,14 @@ import {
 import { dbPath, listProjects, projectRoot } from "./paths.ts";
 import { openStore } from "./store.ts";
 import { loadConfig, type WitConfig } from "./config.ts";
-import { ingestGit } from "./git.ts";
+import { ingestGit, resolveDeploy } from "./git.ts";
 import { ingestGh, type Runner } from "./gh.ts";
 import { dora } from "./dora.ts";
 import { ingestReports } from "./testreports.ts";
 import { allTests, discover, type FoundTest, type Grouping, latestCoverage, pyramidNode, testHistory } from "./pyramid.ts";
 import { type TaskSort, tasksReport } from "./tasks.ts";
 import { diskSample, resources, sample } from "./resources.ts";
-import { quality } from "./quality.ts";
+import { contextBySession, quality } from "./quality.ts";
 import { health } from "./health.ts";
 
 const RANGES: Range[] = ["1h", "today", "7d", "30d", "all"];
@@ -83,7 +83,7 @@ export function project(root?: string | null, opts: { db?: string; projectsDir?:
       defAt: Date.now(),
       readAt: 0,
       projectsDir: opts.projectsDir,
-      cfg: loadConfig(r),
+      cfg: resolveDeploy(r, loadConfig(r)),
       sdlcAt: 0,
       found: null,
       foundAt: 0,
@@ -113,7 +113,7 @@ export function refresh(p: Project, minMs = 2000): number {
 export function refreshSdlc(p: Project, now = Date.now(), minMs = 15_000): number {
   if (now - p.sdlcAt < minMs) return 0;
   p.sdlcAt = now;
-  p.cfg = loadConfig(p.root);
+  p.cfg = resolveDeploy(p.root, loadConfig(p.root));
   return ingestGit(p.db, p.root, p.cfg) + ingestReports(p.db, p.root, p.cfg) + ingestGh(p.db, p.root, p.cfg, now, p.gh);
 }
 
@@ -187,6 +187,7 @@ export function improvements(p: Project, now: number) {
     defined: def,
     coverage: coverage(db, now, def).rows,
     tokens: tokens(db, scope, now, def) as never,
+    sessions: contextBySession(db, since("7d", now), now),
     lastActivity: last,
     timingSince: o.kpis.timingSince,
   });

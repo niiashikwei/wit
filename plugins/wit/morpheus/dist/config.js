@@ -14,11 +14,14 @@ import { join } from "node:path";
 
                             
      
-                                                                                           
+                                                                                                
+                                                           
                                                                                                
                                             
      
                  
+                                                                                     
+                           
                                                                                   
                             
                                                                                                   
@@ -40,7 +43,7 @@ import { join } from "node:path";
  
 
 export const DEFAULTS            = {
-  deploy: "main",
+  deploy: "auto",
   mainBranch: null,
   gh: false,
   incidentLabel: "incident",
@@ -62,7 +65,7 @@ const isGlobMap = (v         )                                =>
 export function normalise(raw         )            {
   const c                          = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw         ) : {};
   const out            = { ...DEFAULTS };
-  if (typeof c.deploy === "string" && /^(main|tag:.+|gh-deployments|gh-workflow:.+)$/.test(c.deploy))
+  if (typeof c.deploy === "string" && /^(auto|main|tag:.+|gh-deployments|gh-workflow:.+)$/.test(c.deploy))
     out.deploy = c.deploy;
   if (typeof c.mainBranch === "string" && c.mainBranch) out.mainBranch = c.mainBranch;
   if (typeof c.gh === "boolean") out.gh = c.gh;

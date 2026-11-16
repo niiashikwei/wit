@@ -8,6 +8,8 @@
 
 /** How many the dashboard shows. */
 export const SHOWN = 10;
+/** Context per reply above which a session is worth splitting (quality.ts uses the same line). */
+export const HEAVY_CONTEXT = 200_000;
 
                               
              
@@ -62,6 +64,8 @@ export const SHOWN = 10;
                                                               
                                                                      
     
+                                                                                                  
+                                                                                                    
                                                                                   
                               
                                                                                                 
@@ -198,6 +202,29 @@ export function rank(x        )                {
           link: { kind: "agent", name: a.name },
         }),
       );
+  }
+
+  // Long sessions re-read their whole history on every reply: slower replies and a cache-read bill
+  // that grows with each turn. One item for all of them, led by the heaviest.
+  const heavy = (x.sessions ?? []).filter((s) => s.contextPerReply > HEAVY_CONTEXT && s.replies >= 50);
+  if (heavy.length) {
+    const top = heavy[0] ;
+    const replies = heavy.reduce((n, s) => n + s.replies, 0);
+    const extra = heavy.reduce((n, s) => n + s.replies * (s.contextPerReply - HEAVY_CONTEXT), 0) / replies;
+    out.push(
+      make({
+        id: "heavy-context",
+        title: heavy.length > 1 ? `Start fresh sessions sooner (${heavy.length} sessions over ${k(HEAVY_CONTEXT)} a reply)` : "Start fresh sessions sooner",
+        evidence: `Session ${top.session.slice(0, 8)} re-reads ${k(top.contextPerReply)} tokens on each of ${top.replies} replies: $${top.cacheReadCost.toFixed(0)} of cache reads.`,
+        how: "Hand finished or separable work to a new session (it starts small), keep a short status file the next session reads, and compact or clear between features instead of carrying everything.",
+        area: "tokens",
+        // Each extra 100k tokens of context adds about a second to every reply.
+        minutesPerWeek: (perWeek(replies) * (extra / 100_000)) / 60,
+        risk: 1,
+        effortHours: 0.5,
+        link: null,
+      }),
+    );
   }
 
   // Review agents that never give a verdict can't be counted: one item for all of them.

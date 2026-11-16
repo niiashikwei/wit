@@ -271,7 +271,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   assert.equal(statSync(join(tmp, "store")).mode & 0o777, 0o700);
   db = openStore(f);
   assert.equal(db.prepare("select count(*) as n from meta").get()!.n, 1, "kept");
-  db.exec("pragma user_version = 1");
+  db.exec("pragma user_version = 2");
   db.close();
   db = openStore(f);
   assert.equal(db.prepare("select count(*) as n from meta").get()!.n, 0, "an older store is read again from scratch");
@@ -281,7 +281,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   process.chdir(dir("uri"));
   try {
     const mem = openStore("file:morpheus?mode=memory");
-    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 2);
+    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 3);
     assert.equal(existsSync("file:morpheus?mode=memory"), false);
   } finally {
     process.chdir(cwd);
@@ -320,6 +320,9 @@ test("installed plugins come from installed_plugins.json, once per name; rules f
   // A list naming no installed plugin, or no list at all: what's under cache/.
   const h2 = dir("inv-home2");
   plugin(join(h2, "plugins", "cache", "m", "tools", "1.0"), "tools");
+  // Hidden folders and loose files in the cache are not plugins.
+  plugin(join(h2, "plugins", "cache", ".tmp", "half", "1.0"), "half");
+  writeFileSync(join(h2, "plugins", "cache", "README"), "x");
   writeFileSync(join(h2, "plugins", "installed_plugins.json"), JSON.stringify({ plugins: { "x@m": [{ installPath: "/nope" }] } }));
   assert.deepEqual(inventory(root, h2).agents, ["tools:helper"]);
   writeFileSync(join(h2, "plugins", "installed_plugins.json"), JSON.stringify({ plugins: 5 }));

@@ -7,7 +7,7 @@ import {
 } from "./format.js";
 
 /** Task categories in a fixed colour order; the last two share the muted "other" colour. */
-export const CATEGORY_ORDER = ["feature", "bugfix", "test", "refactor", "docs", "ops", "review", "explore", "chore", "interrupt"];
+export const CATEGORY_ORDER = ["feature", "bugfix", "test", "refactor", "docs", "ops", "review", "explore", "status", "approve", "chore", "interrupt"];
 export const categoryColor = (c) => {
   const i = CATEGORY_ORDER.indexOf(c);
   return i >= 0 && i < 8 ? `var(--s${i + 1})` : "var(--muted)";
@@ -78,7 +78,7 @@ export function renderDelivery(d) {
     ${card("Change failure rate", fmtPct(d.failureRate.rate), d.failureRate.band, `${d.failureRate.failed} failed`)}
     ${card("Time to restore", fmtMs(d.restore.p50), d.restore.band, `${d.restore.samples} restores`)}
   </div>
-  <p class="note">Deploys come from <b>${esc(d.source === "gh" ? "GitHub" : "git")}</b> (rule <code>${esc(d.rule)}</code>, over ${esc(d.range)}). A deploy fails when a revert of its change, a hotfix or rollback, a failed status or an incident follows it. Bands follow the DORA State of DevOps thresholds.</p>
+  <p class="note">Deploys come from <b>${esc(d.source === "gh" ? "GitHub" : "git")}</b> (rule <code>${esc(d.rule)}</code>${d.ruleDetected ? `, picked from this project's tags and branches: set <code>"deploy"</code> in <code>.claude/wit.json</code> to choose` : ""}, over ${esc(d.range)}). A deploy fails when a revert of its change, a hotfix or rollback, a failed status or an incident follows it. Bands follow the DORA State of DevOps thresholds.</p>
   ${section("Per week", "Deploys", `${legend([{ label: "succeeded", color: "var(--s1)" }, { label: "failed", color: "var(--s8)" }])}<div class="chart">${stackedBars(weeks, ["ok", "failed"], { label: "Deploys per week", color: (k) => (k === "ok" ? "var(--s1)" : "var(--s8)"), keyLabel: (k) => (k === "ok" ? "succeeded" : "failed") })}</div>`)}
   <div class="grid2">
     ${section("Distribution", "Lead time for changes", `<div class="chart">${histogram(d.leadHistogram, { label: "Lead time distribution" })}</div>`)}
@@ -167,6 +167,7 @@ export function renderTokens(d, state = {}) {
     ${section("Tokens and cost by task category", "By category", hbars(d.byCategory.map((c) => ({ label: c.category, value: c.tokensNew, sub: `${fmtNum(c.tokensNew)} · ${fmtMoney(c.cost)} · ${c.tasks} tasks · ${fmtNum(c.tokensNew / c.tasks)} each`, color: categoryColor(c.category), action: "category", path: c.category }))))}
     ${section("Every reply in range", "By model", hbars(d.byModel.map((m, i) => ({ label: m.model, value: m.tokensNew, sub: `${fmtNum(m.tokensNew)} · ${fmtMoney(m.cost)}`, color: `var(--s${(i % 8) + 1})` }))))}
   </div>
+  ${(d.byBranch ?? []).length ? section("Every reply records its git branch: feature work costed whole, across prompts, sessions and agents", "By branch", `<div class="ltbl"><table><thead><tr><th>Branch</th><th class="num">Cost</th><th class="num">New tokens</th><th class="num">Cached reads</th><th class="num">Replies</th><th class="num">Sessions</th><th>Last active</th></tr></thead><tbody>${d.byBranch.map((b) => `<tr><td class="mono">${b.branch ? esc(b.branch) : '<span class="meta">no branch</span>'}</td><td class="num">${fmtMoney(b.cost)}</td><td class="num">${fmtNum(b.tokensNew)}</td><td class="num">${fmtNum(b.tokensCached)}</td><td class="num">${fmtNum(b.replies)}</td><td class="num">${b.sessions}</td><td>${esc(fmtDate(b.lastAt))}</td></tr>`).join("")}</tbody></table></div>`) : ""}
   ${section(`${d.count} tasks${state.category ? ` in ${state.category}` : ""} · a task is one prompt and everything it set off`, "Tasks", `<div class="bar"><div class="seg" role="group" aria-label="Sort tasks by">${sortBtn("tokens", "Tokens")}${sortBtn("cost", "Cost")}${sortBtn("duration", "Time")}${sortBtn("recent", "Newest")}</div>${state.category ? `<div class="scope"><button type="button" data-action="category" data-path="">${esc(state.category)}</button></div>` : ""}</div>${d.list.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Category</th><th>Prompt</th><th class="num">New</th><th class="num">Cached</th><th class="num">Cost</th><th class="num">Time</th></tr></thead><tbody>${rows}</tbody></table></div>${more > 0 ? `<p><button type="button" class="btn" data-action="more-tasks">Show ${Math.min(more, TASK_PAGE)} more (${more} not shown)</button></p>` : ""}` : empty("No tasks.")}`)}`;
 }
 
@@ -186,12 +187,21 @@ export function renderAI(q, tasks) {
     ${tile("Cache hit rate", fmtPct(e.cacheHit), "higher is cheaper", e.cacheHit == null ? null : e.cacheHit >= 0.7 ? "good" : "warn")}
   </div>
   <div class="kpis">
+    ${tile("Context per reply", e.contextPerReply == null ? "–" : fmtNum(e.contextPerReply), "tokens re-read on every reply", e.contextPerReply == null ? null : e.contextPerReply <= 150_000 ? "good" : e.contextPerReply <= 300_000 ? "warn" : "bad")}
+    ${tile("Re-reading context", fmtMoney(e.cacheReadCost), e.cacheReadShare == null ? "no cost yet" : `${fmtPct(e.cacheReadShare)} of the bill`, e.cacheReadShare == null ? null : e.cacheReadShare <= 0.5 ? "good" : "warn")}
+    ${tile("Compactions", fmtNum(p.compactions), `in ${p.sessions} sessions · they shrink the context`)}
+    ${tile("API errors", fmtNum(p.apiErrors), "calls retried: the session stalled", p.apiErrors ? "warn" : null)}
+    ${tile("Gone quiet", fmtNum(p.silentTurns), "turns Claude worked without a word", p.silentTurns ? "warn" : null)}
+  </div>
+  <div class="kpis">
     ${tile("Corrections", fmtPct(p.correctionRate), `${p.corrections ?? 0} prompts pushed back`, p.correctionRate == null ? null : p.correctionRate <= 0.1 ? "good" : "warn")}
     ${tile("Interrupts", fmtNum(p.interrupts), "you stopped Claude mid-task")}
     ${tile("Permission denials", fmtNum(p.denials), "tool calls you turned down")}
-    ${tile("Compactions a session", p.compactionsPerSession == null ? "–" : p.compactionsPerSession.toFixed(2), `${p.compactions} in ${p.sessions} sessions`, p.compactionsPerSession == null ? null : p.compactionsPerSession <= 0.5 ? "good" : "warn")}
+    ${tile("Hooks hold each prompt", p.hookWaitPerPrompt == null ? "–" : fmtMs(p.hookWaitPerPrompt), `${fmtMs(p.hookWaitMs)} waiting in all: before prompts, tool calls and turn ends`, p.hookWaitPerPrompt == null ? null : p.hookWaitPerPrompt <= 10_000 ? "good" : p.hookWaitPerPrompt <= 30_000 ? "warn" : "bad")}
+    ${tile("Pull requests", fmtNum(p.prs), "opened or worked on in sessions")}
     ${tile("Tool calls failing", fmtPct(p.toolErrorRate, 1), `${fmtNum(p.toolCalls)} calls`, p.toolErrorRate == null ? null : p.toolErrorRate <= 0.05 ? "good" : "warn")}
   </div>
+  ${e.heavySessions.length ? section("Sessions carrying the most context", "Heavy sessions", `<div class="ltbl"><table><thead><tr><th>Session</th><th class="num">Replies</th><th class="num">Context per reply</th><th class="num">Re-reading cost</th><th class="num">All cost</th><th>Last active</th></tr></thead><tbody>${e.heavySessions.map((s) => `<tr><td class="mono">${esc(s.session.slice(0, 8))}</td><td class="num">${fmtNum(s.replies)}</td><td class="num">${fmtNum(s.contextPerReply)}</td><td class="num">${fmtMoney(s.cacheReadCost)}</td><td class="num">${fmtMoney(s.cost)}</td><td>${esc(fmtDate(s.lastAt))}</td></tr>`).join("")}</tbody></table></div>`, "Every reply re-reads the whole conversation, even from cache. Over 200k tokens a reply, handing separable work to a new session or compacting between features costs less and answers faster.") : ""}
   ${section("Commits per week", "How much Claude writes", `${legend([{ label: "Claude co-authored", color: "var(--s7)" }, { label: "other", color: "var(--s1)" }])}<div class="chart">${stackedBars(weeks, ["ai", "other"], { label: "Commits per week", color: (k) => (k === "ai" ? "var(--s7)" : "var(--s1)"), keyLabel: (k) => (k === "ai" ? "Claude co-authored" : "other") })}</div>`, "A commit counts as Claude's when it carries a <code>Co-Authored-By: Claude</code> trailer or Claude Code's footer. Redone lines: lines later commits removed from the same file within 14 days, at most the lines added (an estimate).")}
   ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;
 }

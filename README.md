@@ -119,15 +119,15 @@ npx github:niiashikwei/wit init
 | **Health** | One scorecard for the whole cycle: plan, code, review, test, build & CI, deploy, operate and AI efficiency, each good / needs a look / bad / no data, with the numbers and targets behind it and how to turn on a stage with no data. |
 | **Delivery** | The four DORA metrics (deploy frequency, lead time for changes, change failure rate, time to restore) with their State of DevOps bands, deploys per week, the lead-time distribution, CI pass rate per workflow, and recent deploys with what failed and how fast it was fixed. |
 | **Tests** | The testing pyramid by layer (unit, integration, end-to-end), sized by share so an inverted suite shows. Click a layer for a treemap of its modules, then files, classes and single tests; use the trail to zoom out, or group by feature instead. Every level shows test count, pass/fail/not run, flaky tests, time and line and branch coverage, plus coverage and failures over time and the slowest tests. |
-| **Tokens & cost** | New and cached tokens and estimated cost in total, per day by task category (feature, bugfix, test, refactor, docs, review, explore, ops), by model, and for every task: one prompt and everything it set off, with its tools, agents, skills, files and whether you had to correct it. |
-| **AI effectiveness** | How much Claude co-writes, how much of that is redone within 14 days compared with everyone else's code, tokens and cost per commit and per line, cache hit rate, corrections, interrupts, permission denials, compactions and tool errors, by task category. |
+| **Tokens & cost** | New and cached tokens and estimated cost in total, per day by task category (feature, bugfix, test, refactor, docs, review, explore, ops, status, approve), by model, by git branch (feature work costed whole, across prompts, sessions and agents), and for every task: one prompt and everything it set off, with its tools, agents, skills, files and whether you had to correct it. |
+| **AI effectiveness** | How much Claude co-writes, how much of that is redone within 14 days compared with everyone else's code, tokens and cost per commit and per line, cache hit rate, the context carried on every reply and what re-reading it costs, the heaviest sessions, how long hooks hold each prompt, corrections, interrupts, permission denials, API errors, quiet turns, compactions, pull requests and tool errors, by task category. |
 | **Quality** | Coverage of the code that changed, test lines per code line (all commits and Claude's), churn hotspots and tool errors. |
 | **Resources** | CPU and memory of Claude Code, its MCP servers, hooks and the commands it runs, and Wit itself; the machine's load, memory and free disk; the project's disk footprint (repo, `.git`, dependencies, build output, transcripts, Wit's store); and how long test and build runs take. |
 | **Hooks & agents** | Morpheus's original view, below. |
 
 Where the SDLC data comes from, all local unless you opt in:
 - **git** (DORA, AI share, rework, hotspots): commits on the main branch, read with `git`. Claude's commits are those with a `Co-Authored-By: Claude` trailer or Claude Code's footer.
-- **Test reports** (pyramid, coverage): tests are found in the source (Python, JS/TS, Go, Java/Kotlin, Ruby, Rust, C#) and joined with the reports your test runs already write: JUnit XML, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON or Go cover profiles, in their usual paths. Each new version is kept, so history builds up as you test.
+- **Test reports** (pyramid, coverage): tests are found in the source (Python, JS/TS, Go, Java/Kotlin, Ruby, Rust, C#) and joined with the reports your test runs already write: JUnit XML, Jest or Vitest JSON, lcov, Cobertura, JaCoCo, coverage.py JSON, Istanbul JSON or Go cover profiles, in their usual paths, in each package of a monorepo, and in the project's worktrees (the newest copy wins). Each new version is kept, so history builds up as you test.
 - **Claude Code transcripts** (tasks, tokens, corrections, compactions) and **`ps`** (resources).
 - **GitHub, only if you opt in**: CI runs, deployments and `incident` issues through your `gh` CLI, at most every ten minutes.
 
@@ -135,7 +135,7 @@ Optional settings in `.claude/wit.json` (every key optional):
 
 ```json
 {
-  "deploy": "main",
+  "deploy": "tag:v*",
   "gh": false,
   "failureWindowHours": 72,
   "layers": { "integration": ["tests/integration/**"], "e2e": ["e2e/**"] },
@@ -145,7 +145,7 @@ Optional settings in `.claude/wit.json` (every key optional):
 }
 ```
 
-`deploy` is `main` (each change landing on the main branch), `tag:v*` (matching tags), `gh-deployments` or `gh-workflow:<name>`. A deploy fails when a revert of what it shipped, a hotfix or rollback, a failed status or an incident follows within `failureWindowHours`.
+`deploy` is `auto` (the default: release tags such as `v1.2.0` when the project has two or more, else `main`), `main` (each change landing on the main branch, read from the remote's default branch or the local one, whichever is ahead), `tag:v*` (matching tags), `gh-deployments` or `gh-workflow:<name>`. A deploy fails when a revert of what it shipped, a hotfix or rollback, a failed status or an incident follows within `failureWindowHours`.
 
 ### Hooks & agents tab
 
@@ -205,7 +205,7 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 
 ## Testing
 
-Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R45). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R53). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
 
 | Suite | Covers |
 |---|---|
@@ -216,7 +216,7 @@ Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R45). Every test i
 | `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
 | `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
 | `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter, Morpheus MCP wiring (R21, R34) |
-| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), tagged `// @req` |
+| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions (R46–R53), tagged `// @req` |
 | `test_traceability.py` | Every requirement has a test; every Morpheus test is tagged |
 
 The Python tests run the scripts exactly as Claude Code does (a fresh process with JSON on stdin) against an isolated data directory.

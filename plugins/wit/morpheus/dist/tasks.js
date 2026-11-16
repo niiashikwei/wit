@@ -8,11 +8,13 @@
 import { costOf } from "./cost.js";
 import { dayKey, dayKeys,             since } from "./metrics.js";
 
-export const CATEGORIES = ["feature", "bugfix", "test", "refactor", "docs", "review", "explore", "ops", "chore", "interrupt"]         ;
+export const CATEGORIES = ["feature", "bugfix", "test", "refactor", "docs", "review", "explore", "ops", "chore", "status", "approve", "interrupt"]         ;
                                                    
 
 const RULES                       = [
   ["interrupt", /^\[request interrupted/i],
+  // Asking where things stand: in a session that runs work on its own, a frequent and costly turn.
+  ["status", /\b(status( report| update)?|progress report|where are we|what'?s left|projected times?)\b/i],
   ["review", /\b(review|audit|critique|look over|sanity.check)\b/i],
   ["bugfix", /\b(fix(es|ed|ing)?|bugs?|broken|errors?|fail(s|ing|ed|ure)?|crash(es|ing)?|regression|doesn'?t work|not working|wrong)\b/i],
   ["test", /\b(tests?|testing|coverage|specs?|e2e|tdd)\b/i],
@@ -22,6 +24,8 @@ const RULES                       = [
   ["feature", /\b(add|implement|build|create|support|feature|introduce|make|new|enable|allow)\b/i],
   ["explore", /\b(explain|what|why|how|where|which|investigate|understand|research|find|look into|show me|tell me)\b|\?\s*$/i],
 ];
+
+const APPROVE = /^(yes|yep|yeah|ok(ay)?|sure|go( ahead)?|approved?|i approve|lgtm|do it|continue|proceed|done|started it)\b/i;
 
 /** A task's category from its prompt, else from what it touched. */
 export function categorise(prompt        , touched                                                    )           {
@@ -34,6 +38,8 @@ export function categorise(prompt        , touched                              
     return "feature";
   }
   if (touched.bash.some((c) => /^(git (commit|push|merge|rebase)|gh pr|npm publish|docker)/.test(c))) return "ops";
+  // A go-ahead or an answer: the work it set off is categorised above when it edited anything.
+  if (APPROVE.test(prompt)) return "approve";
   if (touched.reads) return "explore";
   return "chore";
 }
@@ -201,6 +207,32 @@ export function tasksReport(db              , scope       , now        , opts   
     m.cost += costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write });
     models.set(m.model, m);
   }
+  // Cost by git branch: every reply records the branch it ran on, so feature work is costed whole,
+  // across prompts, sessions and the agents they started.
+  const branches = (db
+    .prepare(
+      `select coalesce(branch, '') as branch, model, count(*) as replies, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached,
+         sum(tokens_write) as tw, max(at) as last_at
+         from usage where at >= ? and at <= ? group by coalesce(branch, ''), model`,
+    )
+    .all(from, now)                                                                                                                                       )
+    .reduce((m, r) => {
+      const b = m.get(r.branch) ?? { branch: r.branch || null, replies: 0, tokensNew: 0, tokensCached: 0, cost: 0, sessions: 0, lastAt: 0 };
+      b.replies += r.replies;
+      b.tokensNew += r.tin + r.tout;
+      b.tokensCached += r.cached;
+      b.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+      b.lastAt = Math.max(b.lastAt, r.last_at);
+      return m.set(r.branch, b);
+    }, new Map                                                                                                                                             ());
+  // Sessions per branch, an agent counted with the session that started it.
+  for (const r of db
+    .prepare(
+      `select coalesce(branch, '') as branch, count(distinct case when instr(session, '/agent-') > 0 then substr(session, 1, instr(session, '/agent-') - 1) else session end) as n
+         from usage where at >= ? and at <= ? group by coalesce(branch, '')`,
+    )
+    .all(from, now)                                   )
+    branches.get(r.branch) .sessions = r.n;
   const sort = opts.sort ?? "tokens";
   const key                                        = { tokens: (t) => t.tokensNew, cost: (t) => t.cost, duration: (t) => t.durationMs, recent: (t) => t.at };
   const list = all.filter((t) => !opts.category || t.category === opts.category).sort((a, b) => key[sort](b) - key[sort](a));
@@ -221,6 +253,7 @@ export function tasksReport(db              , scope       , now        , opts   
     },
     byCategory: [...cats.values()].sort((a, b) => b.tokensNew - a.tokensNew),
     byModel: [...models.values()].sort((a, b) => b.tokensNew - a.tokensNew),
+    byBranch: [...branches.values()].sort((a, b) => b.cost - a.cost).slice(0, 15),
     days: dayKeys(scope.range === "all" ? first : from, now).map((d) => ({ day: d, ...(days.get(d) ?? {}) })),
     list: list.slice(0, opts.limit ?? 200),
     count: list.length,

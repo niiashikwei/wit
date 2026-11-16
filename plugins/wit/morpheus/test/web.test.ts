@@ -237,8 +237,8 @@ const qualityData = (over: Record<string, unknown> = {}) => ({
   range: "30d", commits: 10,
   ai: { commits: 6, share: 0.6, linesAdded: 500, lineShare: 0.7 },
   rework: { ai: { added: 500, reworked: 25, rate: 0.05 }, human: { added: 100, reworked: 10, rate: 0.1 } },
-  efficiency: { tokensNew: 1e6, cost: 20, tokensPerCommit: 160_000, costPerCommit: 3.3, tokensPerLine: 2000, cacheHit: 0.9 },
-  process: { sessions: 4, compactions: 1, compactionsPerSession: 0.25, denials: 2, interrupts: 1, corrections: 1, correctionRate: 0.05, toolCalls: 100, toolErrorRate: 0.02 },
+  efficiency: { tokensNew: 1e6, cost: 20, tokensPerCommit: 160_000, costPerCommit: 3.3, tokensPerLine: 2000, cacheHit: 0.9, contextPerReply: 120_000, cacheReadCost: 5, cacheReadShare: 0.25, heavySessions: [] },
+  process: { sessions: 4, compactions: 1, compactionsPerSession: 0.25, denials: 2, interrupts: 1, corrections: 1, correctionRate: 0.05, toolCalls: 100, toolErrorRate: 0.02, apiErrors: 0, silentTurns: 0, prs: 3, hookWaitMs: 40_000, hookWaitPerPrompt: 4000 },
   tests: { all: { test: 100, src: 150, ratio: 0.67 }, ai: { test: 60, src: 100, ratio: 0.6 } },
   hotspots: [{ path: "src/a.ts", commits: 5, churn: 300, lines: 400, aiCommits: 3 }],
   changedCoverage: { files: 5, measured: 3, lines: 0.75, lowest: [{ path: "a.ts", lines: 0.5, linesTotal: 10 }, { path: "b.ts", lines: 0.7, linesTotal: 10 }, { path: "c.ts", lines: 0.9, linesTotal: 10 }] },
@@ -249,22 +249,36 @@ const qualityData = (over: Record<string, unknown> = {}) => ({
 // @req R42 R44
 test("the AI effectiveness tab shows how much Claude writes, what sticks, what it costs and how often you step in", () => {
   const html = renderAI(qualityData(), tasksData());
-  has(html, "AI co-authored commits", "60%", "5.0%", "others: 10.0%", "Tokens per AI commit", "160k", "Cache hit rate", "Corrections", "Interrupts", "Permission denials", "0.25", "Commits per week", "Co-Authored-By", "By task category", "bugfix", "kpi good");
+  has(html, "AI co-authored commits", "60%", "5.0%", "others: 10.0%", "Tokens per AI commit", "160k", "Cache hit rate", "Corrections", "Interrupts", "Permission denials", "Pull requests", "Commits per week", "Co-Authored-By", "By task category", "bugfix", "kpi good");
   const bad = renderAI(qualityData({
     rework: { ai: { added: 10, reworked: 5, rate: 0.5 }, human: { added: 0, reworked: 0, rate: null } },
-    efficiency: { tokensNew: 0, cost: 0, tokensPerCommit: null, costPerCommit: null, tokensPerLine: null, cacheHit: 0.3 },
-    process: { sessions: 1, compactions: 3, compactionsPerSession: 3, denials: 0, interrupts: 0, corrections: null, correctionRate: 0.5, toolCalls: 10, toolErrorRate: 0.2 },
+    efficiency: { tokensNew: 0, cost: 0, tokensPerCommit: null, costPerCommit: null, tokensPerLine: null, cacheHit: 0.3, contextPerReply: 420_000, cacheReadCost: 600, cacheReadShare: 0.83, heavySessions: [] },
+    process: { sessions: 1, compactions: 3, compactionsPerSession: 3, denials: 0, interrupts: 0, corrections: null, correctionRate: 0.5, toolCalls: 10, toolErrorRate: 0.2, apiErrors: 89, silentTurns: 155, prs: 0 },
   }), { byCategory: [] });
   has(bad, "kpi bad", "kpi warn", "5 of 10 lines", "No tasks in this range.");
   const mid = renderAI(qualityData({ rework: { ai: { added: 10, reworked: 1.5, rate: 0.15 }, human: { added: 0, reworked: 0, rate: null } } }), null);
   has(mid, "kpi warn");
   const none = renderAI(qualityData({
     rework: { ai: { added: 0, reworked: 0, rate: null }, human: { added: 0, reworked: 0, rate: null } },
-    efficiency: { tokensNew: 0, cost: 0, tokensPerCommit: null, costPerCommit: null, tokensPerLine: null, cacheHit: null },
-    process: { sessions: 0, compactions: 0, compactionsPerSession: null, denials: 0, interrupts: 0, corrections: null, correctionRate: null, toolCalls: 0, toolErrorRate: null },
+    efficiency: { tokensNew: 0, cost: 0, tokensPerCommit: null, costPerCommit: null, tokensPerLine: null, cacheHit: null, contextPerReply: null, cacheReadCost: 0, cacheReadShare: null, heavySessions: [] },
+    process: { sessions: 0, compactions: 0, compactionsPerSession: null, denials: 0, interrupts: 0, corrections: null, correctionRate: null, toolCalls: 0, toolErrorRate: null, apiErrors: 0, silentTurns: 0, prs: 0 },
   }), undefined);
   has(none, "–");
   has(renderAI(null), "Waiting");
+});
+
+// @req R48
+test("the AI tab shows context carried per reply, what re-reading it costs, the heaviest sessions, API errors and quiet turns", () => {
+  const html = renderAI(qualityData(), tasksData());
+  has(html, "Context per reply", "120k", "Re-reading context", "$5.00", "25% of the bill", "Compactions", "they shrink the context", "API errors", "Gone quiet");
+  assert.ok(!html.includes("Heavy sessions"), "no heavy sessions, no table");
+  const heavy = renderAI(qualityData({
+    efficiency: { ...qualityData().efficiency, contextPerReply: 420_000, cacheReadCost: 624, cacheReadShare: 0.83, heavySessions: [{ session: "043ede56-0573", replies: 7380, contextPerReply: 422_680, cacheReadCost: 624, cost: 749, lastAt: Date.UTC(2026, 10, 16, 12) }] },
+    process: { ...qualityData().process, apiErrors: 89, silentTurns: 155 },
+  }), tasksData());
+  has(heavy, "Heavy sessions", "043ede56", "7.4k", "423k", "$624", "$749", "2026-11-16", "kpi bad", "83% of the bill");
+  const mid = renderAI(qualityData({ efficiency: { ...qualityData().efficiency, contextPerReply: 200_000, cacheReadShare: null } }), null);
+  has(mid, "kpi warn", "no cost yet");
 });
 
 // @req R42 R44
@@ -357,4 +371,30 @@ test("the test script fails below 99% line, branch and function coverage", () =>
   const pkg = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "..", "..", "package.json"), "utf8"));
   for (const k of ["lines", "branches", "functions"]) assert.ok(pkg.scripts.test.includes(`--test-coverage-${k}=99`), k);
   assert.ok(pkg.scripts.test.includes("web/src/**"));
+});
+
+// @req R52
+test("the tokens tab costs each git branch whole, and says when a reply had no branch", () => {
+  const html = renderTokens(tasksData({ byBranch: [
+    { branch: "feat/dance-calendar", replies: 1974, tokensNew: 2_400_000, tokensCached: 600_000_000, cost: 180.5, sessions: 3, lastAt: Date.UTC(2026, 10, 12, 12) },
+    { branch: null, replies: 4, tokensNew: 1000, tokensCached: 5000, cost: 0.01, sessions: 1, lastAt: Date.UTC(2026, 10, 12, 12) },
+  ] }));
+  has(html, "By branch", "feat/dance-calendar", "$181", "2.4M", "600.0M", "2.0k", "no branch", "2026-11-12");
+  assert.ok(!renderTokens(tasksData()).includes("By branch"), "no branches, no table");
+});
+
+// @req R49
+test("the delivery tab says when the deploy rule was picked automatically, and how to choose one", () => {
+  has(renderDelivery(doraData({ rule: "tag:v*", ruleDetected: true })), "tag:v*", "picked from this project's tags and branches", ".claude/wit.json");
+  assert.ok(!renderDelivery(doraData()).includes("picked from"));
+});
+
+// @req R53
+test("the AI tab shows how long hooks hold each prompt, graded against 10 and 30 seconds", () => {
+  has(renderAI(qualityData(), null), "Hooks hold each prompt", "4.0 s", "40 s waiting in all");
+  const at = (ms: number | null) => renderAI(qualityData({ process: { ...qualityData().process, hookWaitPerPrompt: ms } }), null);
+  assert.ok(at(20_000).includes("20 s"));
+  has(at(20_000), "kpi warn");
+  has(at(45_000), "kpi bad");
+  has(at(null), "Hooks hold each prompt</span><b>–</b>");
 });

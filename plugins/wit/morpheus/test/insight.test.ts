@@ -11,7 +11,7 @@ import {
   bucket, BUILD_CMD, classify, compact, diskSample, duRunner, footprintPaths, isClaude, machine, parsePs, psRunner, resources, sample, TEST_CMD,
 } from "../src/resources.ts";
 import { getMeta, openStore } from "../src/store.ts";
-import { buildTasks, categorise, isCorrection, tasksReport } from "../src/tasks.ts";
+import { buildTasks, CATEGORIES, categorise, isCorrection, tasksReport } from "../src/tasks.ts";
 import { DAY, HOUR, Repo, tmp } from "./sdlc-helpers.ts";
 
 const NOW = Date.UTC(2026, 10, 12, 12);
@@ -34,6 +34,15 @@ test("cost uses each model's list price, with cache writes and reads priced apar
   assert.equal(costOf("gpt-x", { tokensIn: 1e6, tokensOut: 0, tokensCached: 0 }), 0);
 });
 
+// @req R51
+test("status requests and go-aheads have their own categories; a go-ahead that edited files is categorised by the edits", () => {
+  const none = { edits: [], reads: 0, bash: [] };
+  for (const p of ["status report with projected times", "Status update please", "what's left for you and me?", "where are we on the release"]) assert.equal(categorise(p, none), "status", p);
+  for (const p of ["Yes, use your picks", "done, approved to preprod", "Go ahead", "continue", "I approve the plans"]) assert.equal(categorise(p, { edits: [], reads: 4, bash: [] }), "approve", p);
+  assert.equal(categorise("I approve the plans", { edits: ["src/a.ts"], reads: 0, bash: [] }), "feature");
+  assert.ok(CATEGORIES.includes("status") && CATEGORIES.includes("approve"));
+});
+
 // @req R40
 test("tasks are categorised by their prompt first, then by what they touched", () => {
   const none = { edits: [], reads: 0, bash: [] };
@@ -48,8 +57,9 @@ test("tasks are categorised by their prompt first, then by what they touched", (
   assert.equal(categorise("ok go", { edits: [".github/workflows/ci.yml"], reads: 0, bash: [] }), "ops");
   assert.equal(categorise("ok go", { edits: ["src/a.ts"], reads: 0, bash: [] }), "feature");
   assert.equal(categorise("ok go", { edits: [], reads: 0, bash: ["git push origin x"] }), "ops");
-  assert.equal(categorise("ok go", { edits: [], reads: 3, bash: ["ls"] }), "explore");
-  assert.equal(categorise("ok go", none), "chore");
+  assert.equal(categorise("hmm", { edits: [], reads: 3, bash: ["ls"] }), "explore");
+  assert.equal(categorise("ok go", none), "approve", "a go-ahead that touched nothing");
+  assert.equal(categorise("hmm", none), "chore");
   assert.ok(isCorrection("No, use the other file") && isCorrection("[Request interrupted by user]") && isCorrection("actually revert that"));
   assert.ok(!isCorrection("now add the tests"));
 });
@@ -348,7 +358,7 @@ test("grades, bands and the worst metric decide each stage", () => {
 const inputs = (over: Partial<HealthInputs> = {}): HealthInputs => ({
   dora: { frequency: { perWeek: 10, band: "elite" }, leadTime: { p50: HOUR, band: "elite" }, failureRate: { rate: 0.2, band: "low" }, restore: { p50: HOUR, band: "high" }, deploys: 10, ci: { passRate: 0.95, runs: 20 } },
   tasks: { totals: { tasks: 10, corrected: 1, cacheHit: 0.8 } },
-  quality: { rework: { ai: { rate: 0.05 } }, process: { toolErrorRate: 0.02, compactionsPerSession: 0.2 }, changedCoverage: { lines: 0.7 } },
+  quality: { rework: { ai: { rate: 0.05 } }, process: { toolErrorRate: 0.02 }, efficiency: { contextPerReply: 120_000 }, changedCoverage: { lines: 0.7 } },
   tests: { node: { tests: 10, passed: 9, failed: 1, flaky: 0, coverage: { lines: 0.85 } } },
   ghOn: true,
   ...over,
@@ -370,7 +380,7 @@ test("the health scorecard grades every stage, scores the measured ones and expl
   const none = health(openStore(":memory:"), "today", NOW, inputs({
     dora: { frequency: { perWeek: 0, band: null }, leadTime: { p50: null, band: null }, failureRate: { rate: null, band: null }, restore: { p50: null, band: null }, deploys: 0, ci: { passRate: null, runs: 0 } },
     tasks: { totals: { tasks: 0, corrected: 0, cacheHit: null } },
-    quality: { rework: { ai: { rate: null } }, process: { toolErrorRate: null, compactionsPerSession: null }, changedCoverage: { lines: null } },
+    quality: { rework: { ai: { rate: null } }, process: { toolErrorRate: null }, efficiency: { contextPerReply: null }, changedCoverage: { lines: null } },
     tests: { node: { tests: 5, passed: 0, failed: 0, flaky: 0, coverage: null } },
     ghOn: false,
   }));

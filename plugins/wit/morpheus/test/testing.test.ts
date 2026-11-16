@@ -7,7 +7,7 @@ import {
   allTests, discover, findTests, latestCoverage, layerOf, moduleOf, pyramidNode, requirementSections, subjectOf, testFiles, testHistory, TEST_FILE,
 } from "../src/pyramid.ts";
 import {
-  attrs, findFiles, ingestReports, parseCobertura, parseCoverageJson, parseGoCover, parseJaCoCo, parseJUnit, parseLcov, rel, sniff, unxml,
+  attrs, findFiles, findReports, ingestReports, parseCobertura, parseCoverageJson, parseGoCover, parseJaCoCo, parseJestJson, parseJUnit, parseLcov, projectPath, rel, sniff, unxml, workspaceGlobs,
 } from "../src/testreports.ts";
 import { openStore } from "../src/store.ts";
 import { tmp } from "./sdlc-helpers.ts";
@@ -383,4 +383,85 @@ test("test history sums every report's newest version into one point per run of 
   lone.prepare("insert into test_reports (path, hash, at, kind) values ('z.info', 'ffffffffffffffff', 1, 'coverage')").run();
   lone.prepare("insert into coverage_files (report, file, lines_total, lines_hit, at) values ('z.info@ffffffffffff', 'a', 0, 0, 1)").run();
   assert.deepEqual([testHistory(lone).coverage[0]!.lines, testHistory(lone).coverage[0]!.branches], [null, null]);
+});
+
+// @req R50
+test("Jest and Vitest JSON results are read: each test with its file, suite, time and status", () => {
+  const json = JSON.stringify({
+    numTotalTests: 4,
+    testResults: [
+      { name: "/r/packages/core/src/a.test.ts", assertionResults: [
+        { ancestorTitles: ["cart", "totals"], fullName: "cart totals adds", title: "adds", status: "passed", duration: 1.6 },
+        { ancestorTitles: [], fullName: "lone", title: "lone", status: "failed" },
+        { title: "later", status: "pending" },
+        { status: "passed" },
+      ] },
+      { assertionResults: [{ title: "no file", status: "todo" }] },
+      {},
+    ],
+  });
+  assert.equal(sniff("coverage/test-results.json", json.slice(0, 4096)), "jest");
+  assert.equal(sniff("coverage/coverage-summary.json", '{"total": {}}'), "json");
+  const t = parseJestJson(json);
+  assert.deepEqual(t.map((x) => [x.name, x.suite, x.file, x.durationMs, x.status]), [
+    ["adds", "cart > totals", "/r/packages/core/src/a.test.ts", 2, "passed"],
+    ["lone", null, "/r/packages/core/src/a.test.ts", null, "failed"],
+    ["later", null, "/r/packages/core/src/a.test.ts", null, "skipped"],
+    ["no file", null, null, null, "skipped"],
+  ]);
+  assert.equal(t[0]!.id, "/r/packages/core/src/a.test.ts::cart totals adds");
+  assert.deepEqual(parseJestJson("not json"), []);
+  assert.deepEqual(parseJestJson("{}"), []);
+});
+
+// @req R50
+test("reports are found in a monorepo's packages and in worktrees, newest copy first, with paths mapped to the project", () => {
+  const root = tmp();
+  const put = (p: string, text: string, at: number) => {
+    mkdirSync(join(root, p, ".."), { recursive: true });
+    writeFileSync(join(root, p), text);
+    utimesSync(join(root, p), new Date(at), new Date(at));
+  };
+  const T = Date.UTC(2026, 10, 1);
+  writeFileSync(join(root, "package.json"), JSON.stringify({ workspaces: ["apps/*", "packages/*", "!packages/skip"] }));
+  assert.deepEqual(workspaceGlobs(root, ["coverage/lcov.info"]), ["apps/*/coverage/lcov.info", "packages/*/coverage/lcov.info"]);
+  // The object form, a broken package.json, and the usual folders when none are named.
+  const obj = tmp();
+  writeFileSync(join(obj, "package.json"), JSON.stringify({ workspaces: { packages: ["libs/*/"] } }));
+  assert.deepEqual(workspaceGlobs(obj, ["x"]), ["libs/*/x"]);
+  const plain = tmp();
+  writeFileSync(join(plain, "package.json"), "{ nope");
+  mkdirSync(join(plain, "services"));
+  assert.deepEqual(workspaceGlobs(plain, ["x"]), ["services/*/x"]);
+  assert.deepEqual(workspaceGlobs(tmp(), ["x"]), []);
+
+  // A package's coverage names files relative to the package; its results name absolute paths.
+  mkdirSync(join(root, "packages/core/src"), { recursive: true });
+  writeFileSync(join(root, "packages/core/src/a.ts"), "x\n");
+  put("packages/core/coverage/lcov.info", "SF:src/a.ts\nLF:10\nLH:9\nend_of_record\nSF:shared.ts\nLF:2\nLH:1\nend_of_record\n", T);
+  writeFileSync(join(root, "shared.ts"), "y\n");
+  put("packages/core/coverage/test-results.json", JSON.stringify({ numTotalTests: 1, testResults: [{ name: join(root, "packages/core/src/a.test.ts"), assertionResults: [{ title: "works", status: "passed", duration: 3 }] }] }), T);
+  // The same package report in a worktree, newer: it wins. An older worktree copy loses.
+  put(".claude/worktrees/trunk/packages/core/coverage/lcov.info", `SF:${join(root, ".claude/worktrees/trunk/packages/core/src/a.ts")}\nLF:10\nLH:10\nend_of_record\n`, T + 1000);
+  put(".claude/worktrees/old/packages/core/coverage/test-results.json", "{}", T - 1000);
+  put(".claude/worktrees/stray.txt", "not a worktree", T);
+  const found = findReports(root);
+  assert.deepEqual([...found.keys()].sort(), ["packages/core/coverage/lcov.info", "packages/core/coverage/test-results.json"]);
+  assert.equal(found.get("packages/core/coverage/lcov.info"), join(root, ".claude/worktrees/trunk/packages/core/coverage/lcov.info"));
+  assert.equal(found.get("packages/core/coverage/test-results.json"), join(root, "packages/core/coverage/test-results.json"));
+  assert.equal(findReports(tmp()).size, 0);
+
+  assert.equal(projectPath(root, join(root, "packages/core/coverage/lcov.info"), "packages/core/coverage/lcov.info", "src/a.ts"), "packages/core/src/a.ts");
+  assert.equal(projectPath(root, join(root, "packages/core/coverage/lcov.info"), "packages/core/coverage/lcov.info", "./shared.ts"), "shared.ts", "a path that exists at the root stays");
+  assert.equal(projectPath(root, join(root, "lcov.info"), "lcov.info", "src/a.ts"), "src/a.ts", "a root report has no package");
+  assert.equal(projectPath(root, join(root, "packages/core/lcov.info"), "packages/core/lcov.info", "./src/a.ts"), "packages/core/src/a.ts", "a report in the package folder itself");
+  assert.equal(rel(root, join(root, ".claude/worktrees/trunk/packages/core/src/a.ts")), "packages/core/src/a.ts");
+
+  const db = openStore(":memory:");
+  assert.equal(ingestReports(db, root, cfg()), 2);
+  const files = (db.prepare("select file, lines_hit from coverage_files order by file").all() as any[]).map((r) => [r.file, r.lines_hit]);
+  assert.deepEqual(files, [["packages/core/src/a.ts", 10]]);
+  const cases = db.prepare("select name, file, status, duration_ms from test_cases").all() as any[];
+  assert.deepEqual(cases.map((c) => [c.name, c.file, c.status, c.duration_ms]), [["works", "packages/core/src/a.test.ts", "passed", 3]]);
+  assert.equal((db.prepare("select kind, framework from test_reports where path like '%test-results.json'").get() as any).framework, "jest");
 });

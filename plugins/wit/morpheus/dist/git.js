@@ -99,9 +99,36 @@ export const isHotfix = (subject        ) => /\b(hot-?fix|rollback|roll back|rol
 
 /** The main branch: the configured one, else the first of main, master, trunk that exists. */
 export function mainBranch(root        , cfg                               )                {
-  for (const b of cfg.mainBranch ? [cfg.mainBranch] : ["main", "master", "trunk"])
-    if (git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${b}`])) return b;
+  const has = (ref        ) => git(root, ["rev-parse", "--verify", "--quiet", ref]) !== null;
+  // The remote's default branch first: it is what ships, and a local copy of it may be stale.
+  const origin = git(root, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])?.trim().replace("refs/remotes/origin/", "");
+  const names = cfg.mainBranch ? [cfg.mainBranch] : [...new Set([origin, "main", "master", "trunk"].filter((b)              => !!b))];
+  for (const b of names) {
+    const local = has(`refs/heads/${b}`) ? `refs/heads/${b}` : null;
+    const remote = has(`refs/remotes/origin/${b}`) ? `refs/remotes/origin/${b}` : null;
+    if (local && remote)
+      // Whichever is ahead: work lands on the remote from another worktree, or locally before a push.
+      return git(root, ["merge-base", "--is-ancestor", local, remote]) !== null ? remote : local;
+    if (local ?? remote) return (local ?? remote) ;
+  }
   return null;
+}
+
+/** A tag that names a release: v1.2, 1.2.3, release-4. */
+const RELEASE_TAG = /^(v|release[-/]?)?\d+(\.\d+)+$|^release[-/]?\d+$/i;
+
+/**
+ * Turns "auto" into a deploy rule: release tags when the project has at least two (each tag is a
+ * release), else each change landing on the main branch. A rule set in wit.json is kept as is.
+ */
+export function resolveDeploy(root        , cfg           )            {
+  if (cfg.deploy !== "auto") return cfg;
+  const tags = gitOut(root, ["tag", "--list"]).split("\n").filter((t) => RELEASE_TAG.test(t));
+  if (tags.length < 2) return { ...cfg, deploy: "main", deployDetected: true };
+  const v = tags.filter((t) => /^v/i.test(t)).length;
+  const rel = tags.filter((t) => /^release/i.test(t)).length;
+  const glob = v >= tags.length / 2 ? "v*" : rel >= tags.length / 2 ? "release*" : "[0-9]*";
+  return { ...cfg, deploy: `tag:${glob}`, deployDetected: true };
 }
 
 /**
@@ -131,7 +158,8 @@ const MAX_COMMITS = "20000";
  * Reads new commits on the main branch and refreshes git-made deploys. Returns how many commits
  * it read. Without git or a main branch it does nothing.
  */
-export function ingestGit(db              , root        , cfg           )         {
+export function ingestGit(db              , root        , config           )         {
+  const cfg = resolveDeploy(root, config);
   const main = mainBranch(root, cfg);
   if (!main) return 0;
   // mainBranch checked the branch exists, so it has a head.
@@ -180,7 +208,8 @@ export function ingestGit(db              , root        , cfg           )       
 }
 
 /** Remakes the deploys that come from git: each landed commit ("main") or matching tags ("tag:…"). */
-export function gitDeploys(db              , root        , cfg           )       {
+export function gitDeploys(db              , root        , config           )       {
+  const cfg = resolveDeploy(root, config);
   db.exec("delete from deploys where source = 'git'");
   const put = stmt(db, "insert or replace into deploys (id, at, source, sha, status, lead_ms) values (?, ?, 'git', ?, 'success', ?)");
   if (cfg.deploy === "main") {
