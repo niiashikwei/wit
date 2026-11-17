@@ -1,6 +1,6 @@
 {
   "name": "wit",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Wit for Claude Code: self-tuning token optimization (Python hooks) and Morpheus, a live local dashboard of hooks, skills, agents and tokens (Node).",
   "license": "MIT",
