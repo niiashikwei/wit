@@ -85,14 +85,66 @@ function linesIn(root        , path        )         {
   }
 }
 
+/** Files a tool writes, not a person or Claude: lockfiles, generated types, snapshots, bundles. */
+export const GENERATED = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|Gemfile\.lock|poetry\.lock|uv\.lock|Pipfile\.lock|composer\.lock|go\.sum|Podfile\.lock|pubspec\.lock|mix\.lock|flake\.lock|database\.types\.ts|supabase\.types\.ts)$|(^|\/)(__snapshots__|__generated__|generated|dist|build)\/|\.(min\.(js|css)|map|snap|pb\.go|g\.dart|freezed\.dart)$|_pb2(_grpc)?\.pyi?$|\.(generated|gen)\.\w+$/;
+
+/** A `.gitattributes` glob as a pattern: one without a slash (but a trailing one) matches at any depth. */
+export function globRegex(glob        )         {
+  const g = glob.replace(/^\//, "");
+  const body = g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\u0000/g, ".*");
+  // A slash anywhere but the end ties the glob to the repository root.
+  const anchored = glob.replace(/\/$/, "").includes("/");
+  return new RegExp(`${anchored ? "^" : "(^|/)"}${body}${g.endsWith("/") ? "" : "(/|$)"}`);
+}
+
+/** Whether a path is generated: a known generated file, or marked `linguist-generated` in `.gitattributes`. */
+export function generatedTest(root        )                            {
+  let marked           = [];
+  try {
+    marked = readFileSync(join(root, ".gitattributes"), "utf8")
+      .split("\n")
+      .map((l) => l.trim().split(/\s+/))
+      .filter(([glob, ...attrs]) => glob && !glob.startsWith("#") && attrs.some((a) => a === "linguist-generated" || a === "linguist-generated=true"))
+      .map(([glob]) => globRegex(glob ));
+  } catch {
+    /* no .gitattributes */
+  }
+  return (path) => GENERATED.test(path) || marked.some((r) => r.test(path));
+}
+
+/**
+ * What Claude Code itself says the sessions active in the range cost, over their whole life, next
+ * to Wit's estimate from token counts for the same sessions and their agents. Null when no session
+ * recorded its cost.
+ */
+export function reportedCost(db              , from        , now        ) {
+  const rows = db
+    .prepare("select session, cost from session_costs where session in (select distinct session from usage where at >= ? and at <= ?)")
+    .all(from, now)                                       ;
+  if (!rows.length) return null;
+  const used = db.prepare(
+    `select model, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw
+       from usage where session = ? or session like ? || '/agent-%' group by model`,
+  );
+  let estimate = 0;
+  for (const r of rows)
+    for (const u of used.all(r.session, r.session)                                                                                     )
+      estimate += costOf(u.model, { tokensIn: u.tin, tokensOut: u.tout, tokensCached: u.cached, tokensWrite: u.tw });
+  return { sessions: rows.length, cost: rows.reduce((s, r) => s + r.cost, 0), estimate };
+}
+
 export function quality(db              , root        , range       , now        , tasks                                       ) {
   const from = since(range === "1h" || range === "today" ? "7d" : range, now);
   const commits = db.prepare("select sha, at, ai, added, deleted, files, landed, is_merge from commits where at >= ? and at <= ?").all(from, now)                                                                                                                              ;
   const real = commits.filter((c) => !c.is_merge);
   const ai = real.filter((c) => c.ai);
-  const files = db
+  const allFiles = db
     .prepare("select f.sha, f.path, f.added, f.deleted, c.at, c.ai from commit_files f join commits c on c.sha = f.sha where c.at >= ? and c.is_merge = 0")
     .all(from)                        ;
+  // Generated files churn with every regeneration: they say nothing about whether code sticks.
+  const generated = generatedTest(root);
+  const files = allFiles.filter((f) => !generated(f.path));
+  const reported = reportedCost(db, from, now);
   const usage = db.prepare("select model, tokens_in, tokens_out, tokens_cached, tokens_write from usage where at >= ? and at <= ?").all(from, now)                                                                                                                  ;
   const tokensNew = usage.reduce((s, u) => s + u.tokens_in + u.tokens_out, 0);
   const tokensIn = usage.reduce((s, u) => s + u.tokens_in, 0);
@@ -169,6 +221,7 @@ export function quality(db              , root        , range       , now       
       // What carrying the conversation costs: context re-read on each reply, and its share of the bill.
       contextPerReply: replies ? sessionsCtx.reduce((s, x) => s + x.contextPerReply * x.replies, 0) / replies : null,
       cacheReadCost,
+      reported,
       cacheReadShare: cost ? cacheReadCost / cost : null,
       heavySessions: sessionsCtx.filter((x) => x.contextPerReply > HEAVY_CONTEXT).slice(0, 8),
     },

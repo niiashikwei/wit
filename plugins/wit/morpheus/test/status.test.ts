@@ -8,7 +8,9 @@ import { slug } from "../src/paths.ts";
 import { eta, family, status, tidy } from "../src/status.ts";
 import { openStore } from "../src/store.ts";
 import { fmtClock, fmtUntil } from "../web/src/format.js";
-import { renderStatus } from "../web/src/views.js";
+import { renderAI, renderStatus } from "../web/src/views.js";
+import { costOf } from "../src/cost.ts";
+import { quality } from "../src/quality.ts";
 import { tmp } from "./sdlc-helpers.ts";
 
 const NOW = Date.UTC(2026, 10, 16, 15, 0);
@@ -271,4 +273,28 @@ test("times of day and time until a moment read naturally", () => {
   assert.equal(fmtUntil(NOW + 12 * MIN, NOW), "in 12 min");
   assert.equal(fmtUntil(NOW + 90 * MIN, NOW), "in 1.5 h");
   assert.equal(fmtUntil(NOW - 5 * MIN, NOW), "5 min ago");
+});
+
+// @req R63
+test("Claude Code's own cost for a session is kept and shown beside Wit's estimate", () => {
+  const cs = (cost: unknown) => JSON.stringify({ type: "cost-state", sessionId: "s1", totalCostUSD: cost, startTime: 1 });
+  assert.deepEqual(parseTranscriptLine(cs(12.5)).costs, [{ session: "s1", cost: 12.5 }]);
+  assert.deepEqual(parseTranscriptLine(cs("n/a")).costs, []);
+  assert.deepEqual(parseTranscriptLine(cs(1), { agent: "a" }).costs, [], "an agent's file has no session total");
+  const root = tmp();
+  const projects = tmp();
+  const dir = join(projects, slug(root));
+  mkdirSync(dir, { recursive: true });
+  const reply = { type: "assistant", message: { id: "m1", model: "claude-opus-5-5", usage: { input_tokens: 1000, output_tokens: 100 }, content: [] } };
+  writeFileSync(join(dir, "s1.jsonl"), jsonl([JSON.parse(cs(10)), at(NOW - 60 * MIN, reply), JSON.parse(cs(25)), JSON.parse(cs(5))]));
+  writeFileSync(join(dir, "old.jsonl"), jsonl([{ type: "cost-state", sessionId: "old", totalCostUSD: 99, startTime: 1 }]));
+  const db = openStore(":memory:");
+  ingest(db, { root, projectsDir: projects, logDirs: [] });
+  assert.equal((db.prepare("select cost from session_costs where session = 's1'").get() as { cost: number }).cost, 25, "the highest running total");
+  const q = quality(db, root, "7d", NOW);
+  assert.deepEqual(q.efficiency.reported, { sessions: 1, cost: 25, estimate: costOf("claude-opus-5-5", { tokensIn: 1000, tokensOut: 100, tokensCached: 0, tokensWrite: 0 }) }, "only sessions active in range");
+  assert.equal(quality(openStore(":memory:"), root, "7d", NOW).efficiency.reported, null);
+  has(renderAI(q, null), "Cost Claude Code reports", "1 session, whole life");
+  has(renderAI({ ...q, efficiency: { ...q.efficiency, reported: { sessions: 2, cost: 30, estimate: 28 } } }, null), "2 sessions, whole life");
+  assert.ok(!renderAI({ ...q, efficiency: { ...q.efficiency, reported: null } }, null).includes("Claude Code reports"));
 });

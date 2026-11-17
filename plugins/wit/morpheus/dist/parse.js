@@ -87,6 +87,8 @@
                                                                                             
                                                                
                                                 
+                                                                  
+                                              
                                                                                      
                                                                                                                                                   
                                                                   
@@ -141,6 +143,20 @@ export function redact(text         , max = EXCERPT)                {
 /** `bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/after-edit.sh` → `after-edit`. */
 export function hookScript(command                    , fallback        )         {
   return command?.match(/([\w.-]+)\.(sh|ts|js|mjs|cjs|py|rb)\b/)?.[1] ?? fallback;
+}
+
+/** A shell command's start: an interpreter, a path or a variable. */
+const SHELLISH = /^(bash|sh|zsh|node|npx|bunx?|deno|python3?|uv|ruby|perl|osascript|afplay|jq|env|exec|[.~/$"']|[\w.-]+\/)/;
+
+/**
+ * A Stop hook's name. A prompt hook (a condition a model checks, as `/goal` sets) carries its prose
+ * where a command would be: it is named "prompt hook", not after the event, so it never reads as
+ * a second copy of the event's script hooks.
+ */
+export function stopHookName(command        , event        )         {
+  const script = hookScript(command, "");
+  if (script) return script;
+  return !SHELLISH.test(command.trim()) && command.trim().split(/\s+/).length >= 6 ? "prompt hook" : event;
 }
 
 const textOf = (content         )         =>
@@ -270,6 +286,7 @@ const empty = ()         => ({
   marks: [],
   prs: [],
   titles: [],
+  costs: [],
   bg: [],
   bgIds: [],
   notices: [],
@@ -305,6 +322,10 @@ export function parseTranscriptLine(line        , opts                     = {})
     if (typeof title === "string" && title.trim()) out.titles .push({ session: String(row.sessionId), title: redact(title.trim(), 120)  });
     return out;
   }
+  if (row.type === "cost-state" && row.sessionId && !opts.agent) {
+    if (Number.isFinite(row.totalCostUSD)) out.costs .push({ session: String(row.sessionId), cost: row.totalCostUSD });
+    return out;
+  }
   const at = Date.parse(row.timestamp ?? "");
   if (!Number.isFinite(at) || !row.sessionId) return out;
   out.at = at;
@@ -328,7 +349,7 @@ export function parseTranscriptLine(line        , opts                     = {})
     const failed = Array.isArray(row.hookErrors) && row.hookErrors.length > 0;
     (Array.isArray(row.hookInfos) ? row.hookInfos : []).forEach((h     , i        ) => {
       if (typeof h?.command !== "string" || h.command === "callback") return;
-      const name = hookScript(h.command, event);
+      const name = stopHookName(h.command, event);
       out.runs.push({
         session, branch: row.gitBranch || null, cwd: row.cwd || null, startedAt: at,
         id: `hook:${row.toolUseID ?? row.uuid}:${event}:${name}:${i}`,
@@ -501,8 +522,9 @@ export function parseTranscriptLine(line        , opts                     = {})
     const text = textOf(content).replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim();
     // A notice that arrives while Claude is idle comes as its own message.
     if (!opts.agent && text.startsWith("<task-notification>")) out.notices .push(notice(session, at, text));
-    // A person's prompt: no tool result, no harness notice, not a skill's own text.
-    if (!opts.agent && !results.length && !row.isMeta && text && !/^<[\w-]+/.test(text)) {
+    // A person's prompt: no tool result, no harness notice, not a skill's own text, not the summary
+    // a compaction writes to carry the session on.
+    if (!opts.agent && !results.length && !row.isMeta && !row.isCompactSummary && text && !/^<[\w-]+/.test(text)) {
       out.prompts.push({ session, at, text: redact(text, 160)  });
       if (/^\[Request interrupted/.test(text)) out.marks .push({ session, at, type: "interrupt" });
     }

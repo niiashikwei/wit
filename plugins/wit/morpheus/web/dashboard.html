@@ -1007,6 +1007,7 @@ function renderAI(q, tasks) {
     ${tile("Context per reply", e.contextPerReply == null ? "–" : fmtNum(e.contextPerReply), "tokens re-read on every reply", e.contextPerReply == null ? null : e.contextPerReply <= 150_000 ? "good" : e.contextPerReply <= 300_000 ? "warn" : "bad")}
     ${tile("Re-reading context", fmtMoney(e.cacheReadCost), e.cacheReadShare == null ? "no cost yet" : `${fmtPct(e.cacheReadShare)} of the bill`, e.cacheReadShare == null ? null : e.cacheReadShare <= 0.5 ? "good" : "warn")}
     ${tile("Compactions", fmtNum(p.compactions), `in ${p.sessions} sessions · they shrink the context`)}
+    ${e.reported ? tile("Cost Claude Code reports", fmtMoney(e.reported.cost), `${e.reported.sessions} session${e.reported.sessions === 1 ? "" : "s"}, whole life · Wit estimates ${fmtMoney(e.reported.estimate)}`) : ""}
     ${tile("API errors", fmtNum(p.apiErrors), "calls retried: the session stalled", p.apiErrors ? "warn" : null)}
     ${tile("Gone quiet", fmtNum(p.silentTurns), "turns Claude worked without a word", p.silentTurns ? "warn" : null)}
   </div>
@@ -1119,7 +1120,7 @@ function renderResources(d) {
   ${section("Resident memory", "Memory", lines("memory", fmtBytes))}
   ${section("Percent of one core", "CPU", lines("cpu", (v) => `${Math.round(v)}%`))}
   <div class="grid2">
-    ${section(`Measured ${fmtAgo(d.disk.at)}`, "Disk footprint", diskRows.length ? hbars(diskRows.map(([k, v], i) => ({ label: k, value: v, sub: fmtBytes(v), color: `var(--s${(i % 8) + 1})` })), { fmt: fmtBytes }) : empty("Not measured yet."))}
+    ${section(`Measured ${fmtAgo(d.disk.at)}`, "Disk footprint", (diskRows.length ? hbars(diskRows.map(([k, v], i) => ({ label: k, value: v, sub: fmtBytes(v), color: `var(--s${(i % 8) + 1})` })), { fmt: fmtBytes }) : empty("Not measured yet.")) + (d.disk.unmeasured?.length ? `<p class="meta">Too large to size quickly, tried again daily: ${d.disk.unmeasured.map(esc).join(", ")}</p>` : ""))}
     ${section("Commands Claude ran", "Test and build runs", `<div class="kpis">${cmdTile("Test runs (median)", cmd.test)}${cmdTile("Builds (median)", cmd.build)}</div>${cmd.recent.length ? `<ul class="plain">${cmd.recent.slice(0, 12).map((r) => `<li>${pill(r.outcome === "error" ? "bad" : "good", r.kind)} <code>${esc(r.command)}</code> <span class="meta">${esc(fmtMs(r.durationMs))}${r.peakRss ? ` · peak ${esc(fmtBytes(r.peakRss))}` : ""} · ${esc(fmtAgo(r.at))}</span></li>`).join("")}</ul>` : ""}`)}
   </div>`;
 }

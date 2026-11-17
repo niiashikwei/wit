@@ -122,8 +122,9 @@ test("tool calls without names or inputs still become runs, and a reply without 
 });
 
 // @req R23
-test("a prompt is what the person typed: not a meta line or a harness tag; an interrupt is marked", () => {
+test("a prompt is what the person typed: not a meta line, a harness tag or a compaction's summary; an interrupt is marked", () => {
   assert.deepEqual(parseTranscriptLine(line({ type: "user", isMeta: true, message: { content: "skill text" } })).prompts, []);
+  assert.deepEqual(parseTranscriptLine(line({ type: "user", isCompactSummary: true, message: { content: "This session is being continued from a previous conversation" } })).prompts, []);
   assert.deepEqual(parseTranscriptLine(line({ type: "user", message: { content: "<command-name>/x</command-name>" } })).prompts, []);
   const stop = parseTranscriptLine(line({ type: "user", message: { content: "[Request interrupted by user]" } }));
   assert.equal(stop.prompts.length, 1);
@@ -281,7 +282,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   process.chdir(dir("uri"));
   try {
     const mem = openStore("file:morpheus?mode=memory");
-    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 5);
+    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 6);
     assert.equal(existsSync("file:morpheus?mode=memory"), false);
   } finally {
     process.chdir(cwd);

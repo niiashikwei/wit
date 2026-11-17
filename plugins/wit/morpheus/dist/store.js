@@ -48,6 +48,7 @@ create table if not exists marks (
 );
 create table if not exists meta (key text primary key, value text);
 create table if not exists session_titles (session text primary key, title text not null);
+create table if not exists session_costs (session text primary key, cost real not null);
 create table if not exists bg (
   tool_use_id text primary key, session text not null, kind text not null, label text, command text, task_id text,
   started_at integer not null, ended_at integer, status text, summary text
@@ -116,9 +117,9 @@ create table if not exists disk_samples (
 `;
 
 /** Raise when the tables change: an older store is dropped and read again from the transcripts. */
-const VERSION = 5;
+const VERSION = 6;
 const TABLES = [
-  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "session_titles", "bg", "notices", "asks", "commits",
+  "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "session_titles", "session_costs", "bg", "notices", "asks", "commits",
   "commit_files", "deploys", "ci_runs", "incidents", "test_reports", "test_cases",
   "coverage_files", "resource_samples", "disk_samples",
 ];

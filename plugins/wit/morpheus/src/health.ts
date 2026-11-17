@@ -6,6 +6,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Band } from "./dora.ts";
 import { since, type Range } from "./metrics.ts";
+import { verdictKind } from "./flow.ts";
 
 export type Status = "good" | "warn" | "bad" | "unknown";
 export type Unit = "pct" | "ms" | "perWeek" | "count" | "band" | "ratio";
@@ -39,6 +40,44 @@ export function worst(ms: Metric[]): Status {
   return known.length ? known.reduce((w, s) => (ORDER.indexOf(s) < ORDER.indexOf(w) ? s : w)) : "unknown";
 }
 
+/** The best known metric: a stage any one of whose routes is enough (a PR or an agent review). */
+export function best(ms: Metric[]): Status {
+  const known = ms.map((m) => m.status).filter((s) => s !== "unknown");
+  return known.length ? known.reduce((b, s) => (ORDER.indexOf(s) > ORDER.indexOf(b) ? s : b)) : "unknown";
+}
+
+/** A squash-merged pull request: GitHub ends its subject with the PR number. */
+const PR_SUBJECT = /\(#\d+\)\s*$/;
+/** Commits reaching main within this long of each other landed together (a rebased or cherry-picked batch). */
+export const BATCH_GAP_MS = 10 * 60_000;
+
+/**
+ * How changes reached the main branch: by a merge or a squash-merged pull request, or in batches
+ * (commits landing within ten minutes of each other) set against the review agents' approvals.
+ */
+export function landings(db: DatabaseSync, from: number) {
+  const rows = db.prepare("select at, is_merge, subject from commits where landed = 1 and at >= ? order by at").all(from) as { at: number; is_merge: number; subject: string | null }[];
+  let viaPr = 0;
+  let batches = 0;
+  let prev: number | null = null;
+  for (const r of rows) {
+    const pr = r.is_merge === 1 || PR_SUBJECT.test(r.subject ?? "");
+    if (pr) viaPr++;
+    if (pr || prev == null || r.at - prev > BATCH_GAP_MS) batches++;
+    prev = r.at;
+  }
+  const verdicts = db.prepare("select verdict from agents where agent_type like '%review%' and coalesce(first_at, last_at) >= ?").all(from) as { verdict: string | null }[];
+  const approvals = verdicts.filter((v) => verdictKind(v.verdict) === "approve").length;
+  return {
+    commits: rows.length,
+    viaPr,
+    batches,
+    approvals,
+    prShare: rows.length ? viaPr / rows.length : null,
+    reviewedShare: rows.length && approvals ? Math.min(1, approvals / batches) : null,
+  };
+}
+
 export interface HealthInputs {
   dora: { frequency: { perWeek: number; band: Band }; leadTime: { p50: number | null; band: Band }; failureRate: { rate: number | null; band: Band }; restore: { p50: number | null; band: Band }; deploys: number; ci: { passRate: number | null; runs: number } };
   tasks: { totals: { tasks: number; corrected: number; cacheHit: number | null } };
@@ -50,8 +89,7 @@ export interface HealthInputs {
 export function health(db: DatabaseSync, range: Range, now: number, x: HealthInputs) {
   const m = (label: string, value: number | string | null, unit: Unit, target: string, status: Status): Metric => ({ label, value, unit, target, status });
   const from = since(range === "1h" || range === "today" ? "7d" : range, now);
-  const landed = db.prepare("select count(*) as n, coalesce(sum(is_merge), 0) as merges from commits where landed = 1 and at >= ?").get(from) as { n: number; merges: number };
-  const mergeShare = landed.n ? Number(landed.merges) / Number(landed.n) : null;
+  const land = landings(db, from);
   const correction = x.tasks.totals.tasks ? x.tasks.totals.corrected / x.tasks.totals.tasks : null;
   const t = x.tests.node;
   // Only tests with a result count: tests found in the source but never run say nothing yet.
@@ -70,8 +108,11 @@ export function health(db: DatabaseSync, range: Range, now: number, x: HealthInp
     },
     {
       key: "review", label: "Review", question: "Do changes land through review?",
-      metrics: [m("Changes landed by merge or PR", mergeShare, "pct", "≥ 80%", grade(mergeShare, 0.8, 0.4, true))],
-      hint: mergeShare == null ? "No changes landed on the main branch in this range." : null, status: "unknown",
+      metrics: [
+        m("Changes landed by merge or PR", land.prShare, "pct", "≥ 80%", grade(land.prShare, 0.8, 0.4, true)),
+        ...(land.reviewedShare == null ? [] : [m("Landings approved by a review agent", land.reviewedShare, "pct", "≥ 80%", grade(land.reviewedShare, 0.8, 0.4, true))]),
+      ],
+      hint: land.prShare == null ? "No changes landed on the main branch in this range." : null, status: "unknown",
     },
     {
       key: "test", label: "Test", question: "Is the code tested, and do the tests pass?",
@@ -116,7 +157,8 @@ export function health(db: DatabaseSync, range: Range, now: number, x: HealthInp
       hint: null, status: "unknown",
     },
   ];
-  for (const s of stages) s.status = worst(s.metrics);
+  // Review passes by either route: a pull request or an agent's review before landing.
+  for (const s of stages) s.status = s.key === "review" ? best(s.metrics) : worst(s.metrics);
   const known = stages.filter((s) => s.status !== "unknown");
   const score = known.length ? Math.round((100 * known.reduce((sum, s) => sum + (s.status === "good" ? 1 : s.status === "warn" ? 0.5 : 0), 0)) / known.length) : null;
   return { score, stages, measured: known.length };

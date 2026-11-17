@@ -145,14 +145,28 @@ export function footprintPaths(root: string, dbFile: string | null): Record<stri
   };
 }
 
+/** How long before a folder du could not size is tried again. */
+export const DISK_RETRY_MS = 24 * 60 * 60_000;
+
 /** Measures the disk footprint, at most every ten minutes. Returns whether it measured. */
 export function diskSample(db: DatabaseSync, root: string, now: number, dbFile: string | null, du: DuRunner = duRunner): boolean {
   if (now - Number(getMeta(db, "disk:at") ?? 0) < 10 * 60_000) return false;
   setMeta(db, "disk:at", String(now));
   const groups = footprintPaths(root, dbFile);
-  const sizes = du([...new Set(Object.values(groups).flat())]);
+  // A folder du could not size in time (a very large repository) is tried again a day later, not
+  // on every sample: each try holds up the request that asked.
+  const skipped = (p: string) => now < Number(getMeta(db, `disk:skip:${p}`) ?? 0);
+  const sizes = du([...new Set(Object.values(groups).flat())].filter((p) => !skipped(p)));
   const put = stmt(db, "insert or replace into disk_samples (at, key, bytes) values (?, ?, ?)");
-  for (const [key, paths] of Object.entries(groups)) put.run(now, key, paths.reduce((sum, p) => sum + (sizes.get(p) ?? 0), 0));
+  const unmeasured: string[] = [];
+  for (const [key, paths] of Object.entries(groups)) {
+    const missing = paths.filter((p) => !sizes.has(p));
+    for (const p of missing) if (!skipped(p)) setMeta(db, `disk:skip:${p}`, String(now + DISK_RETRY_MS));
+    // A group with a folder left unsized has no size, rather than a size that is too small.
+    if (missing.length) unmeasured.push(key);
+    else put.run(now, key, paths.reduce((sum, p) => sum + sizes.get(p)!, 0));
+  }
+  setMeta(db, "disk:unmeasured", JSON.stringify(unmeasured));
   return true;
 }
 
@@ -206,6 +220,7 @@ export function resources(db: DatabaseSync, range: Range, now: number) {
     disk: {
       at: diskAt,
       latest: Object.fromEntries(disk.filter((d) => d.at === diskAt).map((d) => [d.key, d.bytes])),
+      unmeasured: JSON.parse(getMeta(db, "disk:unmeasured") ?? "[]") as string[],
       series: Object.fromEntries([...new Set(disk.map((d) => d.key))].map((k) => [k, disk.filter((d) => d.key === k).map((d) => ({ at: d.at, v: d.bytes }))])),
       freeSeries: series("disk-free", (r) => r.rss),
     },

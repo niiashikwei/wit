@@ -5,10 +5,10 @@ import { test } from "node:test";
 import { DEFAULTS } from "../src/config.ts";
 import { costOf, priceOf } from "../src/cost.ts";
 import { ingestGit } from "../src/git.ts";
-import { bandStatus, grade, health, worst, type HealthInputs } from "../src/health.ts";
-import { isTestPath, quality, rework } from "../src/quality.ts";
+import { BATCH_GAP_MS, bandStatus, best, grade, health, landings, worst, type HealthInputs } from "../src/health.ts";
+import { GENERATED, generatedTest, globRegex, isTestPath, quality, rework } from "../src/quality.ts";
 import {
-  bucket, BUILD_CMD, classify, compact, diskSample, duRunner, footprintPaths, isClaude, machine, parsePs, psRunner, resources, sample, TEST_CMD,
+  bucket, BUILD_CMD, classify, compact, DISK_RETRY_MS, diskSample, duRunner, footprintPaths, isClaude, machine, parsePs, psRunner, resources, sample, TEST_CMD,
 } from "../src/resources.ts";
 import { getMeta, openStore } from "../src/store.ts";
 import { buildTasks, CATEGORIES, categorise, isCorrection, tasksReport } from "../src/tasks.ts";
@@ -234,9 +234,20 @@ test("the disk footprint is measured at most every ten minutes, by folder group"
   assert.ok(by.project >= by.dependencies);
   assert.equal(by.transcripts, 0);
   assert.ok(by["wit store"] >= 8);
-  // A stand-in du that can't size anything: plain files still count by their size.
+  // A stand-in du that can't size anything: those groups get no size, not zero, and wait a day.
   const db2 = openStore(":memory:");
-  diskSample(db2, r.root, NOW, join(tmp(), "gone.db"), () => new Map());
+  const asked: string[][] = [];
+  const none = (ps: string[]) => (asked.push(ps), new Map<string, number>());
+  diskSample(db2, r.root, NOW, join(tmp(), "gone.db"), none);
+  const keys = (db2.prepare("select key, bytes from disk_samples").all() as any[]).map((x) => `${x.key}:${x.bytes}`).sort();
+  assert.deepEqual(keys, ["build output:0", "transcripts:0", "wit store:0"], "only groups with nothing to size are written");
+  assert.deepEqual(resources(db2, "7d", NOW).disk.unmeasured, ["project", "git", "dependencies"]);
+  assert.ok(asked[0]!.includes(r.root));
+  diskSample(db2, r.root, NOW + 11 * 60_000, null, none);
+  assert.ok(!asked[1]!.includes(r.root), "a folder that could not be sized waits a day");
+  diskSample(db2, r.root, NOW + DISK_RETRY_MS + 1, null, none);
+  assert.ok(asked[2]!.includes(r.root), "and is tried again after it");
+  assert.deepEqual(resources(openStore(":memory:"), "7d", NOW).disk.unmeasured, []);
   assert.equal(duRunner([join(tmp(), "missing")]).size, 0);
 });
 
@@ -391,4 +402,65 @@ test("the health scorecard grades every stage, scores the measured ones and expl
   assert.ok(none.stages.find((s) => s.key === "test")!.hint!.includes("coverage"));
   const noRuns = health(openStore(":memory:"), "7d", NOW, inputs({ dora: { ...inputs().dora, ci: { passRate: null, runs: 0 } } }));
   assert.ok(noRuns.stages.find((s) => s.key === "build")!.hint!.includes("No CI runs"));
+});
+
+// @req R61
+test("changes landed by squash-merged PRs or approved by a review agent count as reviewed", () => {
+  const db = openStore(":memory:");
+  const c = db.prepare("insert into commits (sha, at, authored_at, landed, is_merge, subject) values (?, ?, ?, ?, 0, ?)");
+  // A squash-merged PR, then two cherry-picked batches of two commits each, and one commit off main.
+  c.run("p", NOW - 5 * DAY, NOW - 5 * DAY, 1, "feat: sign-in (#12)");
+  c.run("a1", NOW - 3 * DAY, NOW - 3 * DAY, 1, "fix: one");
+  c.run("a2", NOW - 3 * DAY + 60_000, NOW - 3 * DAY, 1, "fix: two");
+  c.run("b1", NOW - 2 * DAY, NOW - 2 * DAY, 1, null);
+  c.run("b2", NOW - 2 * DAY + BATCH_GAP_MS, NOW - 2 * DAY, 1, "docs");
+  c.run("x", NOW - 2 * DAY, NOW - 2 * DAY, 0, "on a branch (#3)");
+  const a = db.prepare("insert into agents (agent_id, agent_type, first_at, verdict) values (?, ?, ?, ?)");
+  a.run("r1", "dfh-review", NOW - 3 * DAY, "approve");
+  a.run("r2", "dfh-review", NOW - 2 * DAY, "changes-required");
+  a.run("r3", "code-reviewer", null, "approve");
+  a.run("r4", "dfh-review", NOW - 40 * DAY, "approve");
+  const l = landings(db, NOW - 30 * DAY);
+  assert.deepEqual([l.commits, l.viaPr, l.batches, l.approvals, l.prShare, l.reviewedShare], [5, 1, 3, 1, 0.2, 1 / 3]);
+  a.run("r5", "dfh-review", NOW - DAY, "approve");
+  a.run("r6", "dfh-review", NOW - DAY, "LGTM");
+  a.run("r7", "dfh-review", NOW - DAY, "approve");
+  assert.equal(landings(db, NOW - 30 * DAY).reviewedShare, 1, "capped at every landing");
+  const review = health(db, "30d", NOW, inputs()).stages.find((s) => s.key === "review")!;
+  assert.deepEqual(review.metrics.map((m) => [m.label, m.status]), [["Changes landed by merge or PR", "bad"], ["Landings approved by a review agent", "good"]]);
+  assert.equal(review.status, "good", "either route is enough");
+  const noReviews = openStore(":memory:");
+  noReviews.prepare("insert into commits (sha, at, authored_at, landed, is_merge, subject) values ('z', ?, ?, 1, 0, 'chore')").run(NOW - DAY, NOW - DAY);
+  assert.equal(landings(noReviews, NOW - 30 * DAY).reviewedShare, null, "no agent reviews: no second metric");
+  assert.equal(health(noReviews, "30d", NOW, inputs()).stages.find((s) => s.key === "review")!.metrics.length, 1);
+  const m = (status: string) => ({ label: "", value: 1, unit: "pct" as const, target: "", status: status as never });
+  assert.deepEqual([best([m("bad"), m("good")]), best([m("unknown"), m("warn")]), best([m("unknown")])], ["good", "warn", "unknown"]);
+});
+
+// @req R62
+test("generated files are left out of rework, hotspots and changed coverage", () => {
+  assert.deepEqual(
+    ["package-lock.json", "packages/data/src/database.types.ts", "web/a.min.js", "src/__snapshots__/a.snap", "src/generated/x.ts", "x_pb2.py", "api.gen.go", "src/app.ts", "src/builder.ts"].map((p) => GENERATED.test(p)),
+    [true, true, true, true, true, true, true, false, false],
+  );
+  assert.deepEqual(
+    [["*.pb.ts", "a/b/x.pb.ts"], ["api/gen/**", "api/gen/a/b.ts"], ["api/gen/**", "x/api/gen/a.ts"], ["/schema.ts", "schema.ts"], ["/schema.ts", "a/schema.ts"], ["vendor/", "lib/vendor/a.js"], ["docs/?.md", "docs/a.md"]].map(([g, p]) => globRegex(g!).test(p!)),
+    [true, true, false, true, false, true, true],
+  );
+  const root = tmp();
+  writeFileSync(join(root, ".gitattributes"), "# generated\n\napi/gen/** linguist-generated\n*.svg binary\nschema.graphql linguist-generated=true\nkeep.ts linguist-generated=false\n");
+  const gen = generatedTest(root);
+  assert.deepEqual(["api/gen/client.ts", "a/schema.graphql", "keep.ts", "logo.svg", "yarn.lock"].map(gen), [true, true, false, false, true]);
+  assert.equal(generatedTest(tmp())("src/app.ts"), false, "no .gitattributes");
+  const db = openStore(":memory:");
+  const c = db.prepare("insert into commits (sha, at, authored_at, ai, added, deleted, files, landed, is_merge) values (?, ?, ?, 1, 10, 0, 1, 1, 0)");
+  const f = db.prepare("insert into commit_files (sha, path, added, deleted) values (?, ?, ?, ?)");
+  for (const [i, sha] of ["c1", "c2", "c3"].entries()) {
+    c.run(sha, NOW - (5 - i) * DAY, NOW - (5 - i) * DAY);
+    f.run(sha, "api/gen/client.ts", 100, 100);
+    f.run(sha, "src/app.ts", 5, i ? 5 : 0);
+  }
+  const q = quality(db, root, "30d", NOW);
+  assert.deepEqual(q.hotspots.map((h) => h.path), ["src/app.ts"]);
+  assert.equal(q.rework.ai.added, 15, "only the hand-written file's lines count");
 });

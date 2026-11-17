@@ -30,7 +30,7 @@ const CHUNK = 8 * 1024 * 1024;
 /** A gap longer than this between an agent's lines is idle, not work. */
 const IDLE_MS = 15 * 60_000;
 // Only lines that can hold a record are parsed: a transcript is mostly model text.
-const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"|"stop_hook_summary"|"api_error"|"pr-link"|"silent_turn_reminder"|"custom-title"|"agent-name"|"queued_command"/;
+const WORTH = /"hook_|"tool_use"|"tool_result"|"type":"user"|"usage"|"compact_boundary"|"stop_hook_summary"|"api_error"|"pr-link"|"silent_turn_reminder"|"custom-title"|"agent-name"|"queued_command"|"cost-state"/;
 
 /**
  * Calls `onLine` for each complete line after the stored position, then stores the new one. Reads
@@ -166,6 +166,8 @@ export function apply(db              , p        , agentId         , file       
         r.toolUseId,
       );
   }
+  for (const c of p.costs ?? [])
+    stmt(db, "insert into session_costs (session, cost) values (?, ?) on conflict (session) do update set cost = max(cost, excluded.cost)").run(c.session, c.cost);
   for (const t of p.titles ?? [])
     stmt(db, "insert into session_titles (session, title) values (?, ?) on conflict (session) do update set title = excluded.title").run(t.session, t.title);
   for (const b of p.bg ?? [])

@@ -206,7 +206,7 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 
 ## Testing
 
-Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R60). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R64). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
 
 | Suite | Covers |
 |---|---|
@@ -217,7 +217,7 @@ Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R60). Every test i
 | `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
 | `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
 | `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter, Morpheus MCP wiring (R21, R34) |
-| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions, the Status tab and how work flows (R46–R60), tagged `// @req` |
+| `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions, the Status tab, how work flows and what the DFH audit corrected (R46–R64), tagged `// @req` |
 | `test_traceability.py` | Every requirement has a test; every Morpheus test is tagged |
 
 The Python tests run the scripts exactly as Claude Code does (a fresh process with JSON on stdin) against an isolated data directory.

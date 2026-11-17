@@ -31,6 +31,7 @@ import {
 } from "../src/metrics.ts";
 import {
   hookScript,
+  stopHookName,
   isOrchestration,
   parseHookRunLine,
   parseTranscriptLine,
@@ -1673,4 +1674,17 @@ test("the project is the git repository's main checkout, so a worktree counts as
   assert.equal(projectRoot(tree), repo);
   assert.equal(projectRoot(repo), repo);
   rmSync(repo, { recursive: true, force: true });
+});
+
+// @req R64
+test("a prompt hook in a Stop summary is named as one, not after the event", () => {
+  assert.equal(stopHookName('bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/stop-checks.sh', "Stop"), "stop-checks");
+  assert.equal(stopHookName("get all layers of unit testing as close to 100% as possible", "Stop"), "prompt hook");
+  assert.equal(stopHookName("afplay /System/Library/Sounds/Glass.aiff and then say done now", "Stop"), "Stop", "a shell command keeps the event's name");
+  assert.equal(stopHookName("say done", "Stop"), "Stop", "too short to be a prompt");
+  const p = parseTranscriptLine(JSON.stringify({
+    type: "system", subtype: "stop_hook_summary", sessionId: "s", timestamp: "2026-11-01T00:00:00Z", toolUseID: "t",
+    hookInfos: [{ command: "bash .claude/hooks/stop-checks.sh", durationMs: 800 }, { command: "callback" }, { command: "keep going until every test passes on staging", durationMs: 5000 }],
+  }));
+  assert.deepEqual(p.runs.map((r) => [r.name, r.durationMs]), [["stop-checks", 800], ["prompt hook", 5000]]);
 });
