@@ -34,6 +34,7 @@ import {                tasksReport } from "./tasks.js";
 import { diskSample, resources, sample } from "./resources.js";
 import { contextBySession, quality } from "./quality.js";
 import { status } from "./status.js";
+import { localPipeline, reviewers, waitedOnYou } from "./flow.js";
 import { health } from "./health.js";
 
 const RANGES          = ["1h", "today", "7d", "30d", "all"];
@@ -189,6 +190,9 @@ export function improvements(p         , now        ) {
     coverage: coverage(db, now, def).rows,
     tokens: tokens(db, scope, now, def)         ,
     sessions: contextBySession(db, since("7d", now), now),
+    waiting: waitedOnYou(db, since("7d", now), now),
+    pipeline: localPipeline(db, since("7d", now), now),
+    reviewers: reviewers(db, since("7d", now), now),
     lastActivity: last,
     timingSince: o.kpis.timingSince,
   });

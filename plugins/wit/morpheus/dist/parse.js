@@ -88,7 +88,7 @@
                                                                
                                                 
                                                                                      
-                                                                                                                         
+                                                                                                                                                  
                                                                   
                                                   
                                                                            
@@ -433,6 +433,7 @@ export function parseTranscriptLine(line        , opts                     = {})
           toolUseId: c.id, session, at,
           kind: c.name === "Monitor" ? "monitor" : c.name === "Bash" ? "command" : "agent",
           label: redact(input.description ?? input.command ?? input.prompt, 120),
+          command: c.name === "Bash" && typeof input.command === "string" ? redact(input.command, 300) : null,
         });
       // Stopping a task ends it as surely as its notice would.
       if (c.name === "TaskStop" && typeof (input.task_id ?? input.shell_id) === "string")

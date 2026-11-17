@@ -34,6 +34,7 @@ import { type TaskSort, tasksReport } from "./tasks.ts";
 import { diskSample, resources, sample } from "./resources.ts";
 import { contextBySession, quality } from "./quality.ts";
 import { status } from "./status.ts";
+import { localPipeline, reviewers, waitedOnYou } from "./flow.ts";
 import { health } from "./health.ts";
 
 const RANGES: Range[] = ["1h", "today", "7d", "30d", "all"];
@@ -189,6 +190,9 @@ export function improvements(p: Project, now: number) {
     coverage: coverage(db, now, def).rows,
     tokens: tokens(db, scope, now, def) as never,
     sessions: contextBySession(db, since("7d", now), now),
+    waiting: waitedOnYou(db, since("7d", now), now),
+    pipeline: localPipeline(db, since("7d", now), now),
+    reviewers: reviewers(db, since("7d", now), now),
     lastActivity: last,
     timingSince: o.kpis.timingSince,
   });

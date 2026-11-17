@@ -10,13 +10,15 @@
 export const SHOWN = 10;
 /** Context per reply above which a session is worth splitting (quality.ts uses the same line). */
 export const HEAVY_CONTEXT = 200_000;
+/** A wait for an answer past this long suggests the person was away. */
+export const SLOW_ANSWER_MS = 15 * 60_000;
 
 export interface Improvement {
   id: string;
   title: string;
   evidence: string;
   how: string;
-  area: "hook" | "skill" | "agent" | "tool" | "tokens" | "setup";
+  area: "hook" | "skill" | "agent" | "tool" | "tokens" | "setup" | "flow";
   minutesPerWeek: number;
   risk: number;
   effortHours: number;
@@ -66,6 +68,12 @@ export interface Inputs {
   };
   /** Context carried per reply by session (quality.ts, contextBySession), heaviest bill first. */
   sessions?: { session: string; replies: number; contextPerReply: number; cacheReadCost: number }[];
+  /** Time sessions waited on the person (flow.ts, waitedOnYou). */
+  waiting?: { blocking: number; answered: number; totalMs: number; p90: number | null; slow: number };
+  /** The pipeline Claude runs in the background (flow.ts, localPipeline). */
+  pipeline?: { steps: { step: string; label: string | null; runs: number; failed: number; lostMs: number }[] };
+  /** Review agents' catch rates (flow.ts, reviewers). */
+  reviewers?: { name: string; runs: number; approved: number; changes: number; cost: number }[];
   /** When the last session was active, to tell a silent hook from a quiet day. */
   lastActivity: number | null;
   /** When any hook began timing every run; before it, quiet hooks may just not have printed. */
@@ -226,6 +234,55 @@ export function rank(x: Inputs): Improvement[] {
       }),
     );
   }
+
+  // Sessions stopped for long stretches waiting on an answer: the person was away.
+  const w = x.waiting;
+  if (w && w.slow >= 3 && (w.p90 ?? 0) > SLOW_ANSWER_MS)
+    out.push(
+      make({
+        id: "slow-answers",
+        title: "Get told when a session waits on you",
+        evidence: `${w.slow} of ${w.answered} questions, plans and go-aheads waited over ${Math.round(SLOW_ANSWER_MS / 60_000)} minutes for an answer; sessions sat stopped ${(w.totalMs / 3_600_000).toFixed(1)} h in all.`,
+        how: "Turn on notifications in the Claude app (or a Notification hook that pings your phone), ask Claude to batch its questions, and give standing approval for routine go-aheads.",
+        area: "flow",
+        minutesPerWeek: perWeek(w.totalMs / 60_000) / 2,
+        risk: 0,
+        effortHours: 0.25,
+        link: null,
+      }),
+    );
+
+  // Pipeline steps that keep failing: each failure is a wait and usually a re-run.
+  for (const st of (x.pipeline?.steps ?? []).filter((st) => st.failed >= 3 && st.failed / st.runs >= 0.2).slice(0, 3))
+    out.push(
+      make({
+        id: `pipeline:${st.step}`,
+        title: `Make "${st.label ?? st.step}" pass first time`,
+        evidence: `It failed ${st.failed} of ${st.runs} background runs: ${Math.round(st.lostMs / 60_000)} minutes of runs that had to be done again.`,
+        how: "Read the failures for a common cause (a flaky test, a missing step before it, a timeout), run the quick part first so it fails fast, and fix the flakiest test before the next run.",
+        area: "flow",
+        minutesPerWeek: perWeek(st.lostMs / 60_000),
+        risk: 1,
+        effortHours: 1,
+        link: null,
+      }),
+    );
+
+  // Reviewers that let everything through cost money and find nothing.
+  for (const r of (x.reviewers ?? []).filter((r) => r.changes === 0 && r.approved >= 10))
+    out.push(
+      make({
+        id: `reviewer:${r.name}`,
+        title: `Rethink ${r.name}: it approved all ${r.approved} reviews`,
+        evidence: `${r.name} never asked for a change in ${r.approved} verdicts ($${r.cost.toFixed(0)} of runs).`,
+        how: "Give it a sharper checklist of what to fail on, run it only on the changes it covers, move it to a cheaper model, or drop it.",
+        area: "agent",
+        minutesPerWeek: 0,
+        risk: 0,
+        effortHours: 0.5,
+        link: { kind: "agent", name: r.name },
+      }),
+    );
 
   // Review agents that never give a verdict can't be counted: one item for all of them.
   const silent = x.agents.filter(

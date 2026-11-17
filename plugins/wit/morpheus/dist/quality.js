@@ -11,6 +11,7 @@ import { costOf, priceOf } from "./cost.js";
 import {             since } from "./metrics.js";
 import { HEAVY_CONTEXT } from "./improvements.js";
 import { latestCoverage } from "./pyramid.js";
+import { orchestration, reviewers, waitedOnYou } from "./flow.js";
 
 const DAY = 86_400_000;
 export const REWORK_WINDOW = 14 * DAY;
@@ -187,6 +188,9 @@ export function quality(db              , root        , range       , now       
       silentTurns: mark("silent"),
       prs,
     },
+    waiting: waitedOnYou(db, from, now),
+    orchestration: orchestration(db, from, now),
+    reviewers: reviewers(db, from, now),
     tests: { all: testLines(files), ai: testLines(files.filter((f) => f.ai)) },
     hotspots,
     changedCoverage: {

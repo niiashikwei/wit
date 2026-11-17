@@ -5,6 +5,7 @@
  */
                                                 
                                              
+import { localPipeline, spend } from "./flow.js";
 import { isHotfix } from "./git.js";
 import { percentile,             since } from "./metrics.js";
 
@@ -113,6 +114,7 @@ export function dora(db              , range       , now        , cfg           
       leadP50: percentile(ds.map((d) => d.lead_ms).filter((v)              => v != null), 50),
     });
   }
+  const spent = spend(db, from, now);
   const sha = (s               ) => (s ? s.slice(0, 10) : null);
   return {
     range: used,
@@ -135,6 +137,8 @@ export function dora(db              , range       , now        , cfg           
         return { id: d.id, at: d.at, sha: sha(d.sha), status: d.status, leadMs: d.lead_ms, subject: c?.subject ?? null, ai: !!c?.ai, failed: f ?? null };
       }),
     ci: ciSummary(db, from, now),
+    pipeline: localPipeline(db, from, now),
+    cost: { total: spent, perDeploy: inRange.length ? spent / inRange.length : null },
   };
 }
 

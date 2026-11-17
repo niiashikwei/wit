@@ -169,7 +169,7 @@ export function apply(db: DatabaseSync, p: Parsed, agentId?: string, file?: stri
   for (const t of p.titles ?? [])
     stmt(db, "insert into session_titles (session, title) values (?, ?) on conflict (session) do update set title = excluded.title").run(t.session, t.title);
   for (const b of p.bg ?? [])
-    stmt(db, "insert or ignore into bg (tool_use_id, session, kind, label, started_at) values (?, ?, ?, ?, ?)").run(b.toolUseId, b.session, b.kind, b.label, b.at);
+    stmt(db, "insert or ignore into bg (tool_use_id, session, kind, label, command, started_at) values (?, ?, ?, ?, ?, ?)").run(b.toolUseId, b.session, b.kind, b.label, b.command ?? null, b.at);
   for (const b of p.bgIds ?? []) stmt(db, "update bg set task_id = ? where tool_use_id = ?").run(b.taskId, b.toolUseId);
   for (const n of p.notices ?? []) {
     stmt(db, "insert or ignore into notices (session, at, task_id, status, summary, event) values (?, ?, ?, ?, ?, ?)").run(n.session, n.at, n.taskId, n.status, n.summary, n.event);

@@ -61,6 +61,29 @@ export function renderHealth(d) {
 }
 
 // ---------- Delivery ----------
+// The pipeline Claude runs on this machine (tests, checks, builds in the background), and what a
+// deploy costs in Claude usage.
+function renderPipeline(d) {
+  const pl = d.pipeline;
+  if (!pl) return "";
+  const perDeploy = d.cost?.perDeploy ?? null;
+  const rows = pl.steps
+    .map((s) => `<tr><td><code>${esc(s.step)}</code>${s.label ? `<br><small class="meta">${esc(s.label)}</small>` : ""}</td><td class="num">${s.runs}</td><td class="num">${s.failed ? pill(s.failed / s.runs >= 0.2 ? "bad" : "warn", String(s.failed)) : "0"}</td><td class="num">${s.stopped}</td><td class="num">${esc(fmtMs(s.p50))}</td><td class="num">${esc(s.lostMs ? fmtMs(s.lostMs) : "–")}</td></tr>`)
+    .join("");
+  const tiles = `<div class="kpis">
+    ${tile("Background runs", fmtNum(pl.runs), `${fmtMs(pl.ms)} of commands Claude ran on its own`)}
+    ${tile("Runs failing", fmtPct(pl.failRate), `${pl.failed} failed · ${pl.stopped} stopped by hand`, pl.failRate == null ? null : pl.failRate <= 0.05 ? "good" : pl.failRate <= 0.15 ? "warn" : "bad")}
+    ${tile("Time in failed runs", pl.lostMs ? fmtMs(pl.lostMs) : "–", "runs that had to be done again", pl.lostMs ? "warn" : null)}
+    ${tile("Claude cost per deploy", perDeploy == null ? "–" : fmtMoney(perDeploy), `${fmtMoney(d.cost?.total ?? 0)} over ${d.deploys} deploys`)}
+  </div>`;
+  return section(
+    "Tests, checks and builds Claude ran in the background",
+    "Local pipeline",
+    `${tiles}${rows ? `<div class="ltbl"><table><thead><tr><th>Step</th><th class="num">Runs</th><th class="num">Failed</th><th class="num">Stopped</th><th class="num">Usual time</th><th class="num">Time in failed runs</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No background commands in this range. Steps appear when Claude runs tests, checks or builds with <code>run_in_background</code>.")}`,
+    "Many projects' real pipeline runs here, before anything reaches CI. Steps are grouped by what the command does; the ones that fail most are listed first.",
+  );
+}
+
 export function renderDelivery(d) {
   if (!d) return empty("Waiting for the first numbers…");
   const weeks = d.weeks.map((w) => ({ label: fmtDay(fmtDate(w.week)), values: { ok: w.deploys - w.failed, failed: w.failed } }));
@@ -84,6 +107,7 @@ export function renderDelivery(d) {
     ${section("Distribution", "Lead time for changes", `<div class="chart">${histogram(d.leadHistogram, { label: "Lead time distribution" })}</div>`)}
     ${section("GitHub Actions", "CI", ci.runs ? `<div class="kpis">${tile("Runs passing", fmtPct(ci.passRate), `${ci.runs} runs`, ci.passRate >= 0.9 ? "good" : ci.passRate >= 0.75 ? "warn" : "bad")}${tile("Median run", fmtMs(ci.p50))}</div>${hbars(ci.workflows.slice(0, 6).map((w) => ({ label: w.workflow, value: w.runs ? w.failed / w.runs : 0, sub: `${w.failed}/${w.runs} failed · p50 ${fmtMs(w.p50)}`, color: "var(--s8)" })), { fmt: fmtPct })}` : empty('No CI runs read. Add <code>"gh": true</code> to <code>.claude/wit.json</code> to read GitHub Actions with the <code>gh</code> CLI.'))}
   </div>
+  ${renderPipeline(d)}
   ${section("Newest first", "Recent deploys", d.recent.length ? `<div class="ltbl"><table><thead><tr><th>When</th><th>Change</th><th>What</th><th class="num">Lead time</th><th>Result</th></tr></thead><tbody>${recent}</tbody></table></div>` : empty("No deploys in this range."))}`;
 }
 
@@ -172,6 +196,35 @@ export function renderTokens(d, state = {}) {
 }
 
 // ---------- AI effectiveness ----------
+// How work flows between you, the main session and its agents.
+function renderFlow(q) {
+  const w = q.waiting;
+  const o = q.orchestration;
+  const rv = q.reviewers ?? [];
+  if (!w || !o) return "";
+  const tiles = `<div class="kpis">
+    ${tile("Sessions waited on you", w.answered ? fmtMs(w.totalMs) : "–", `${w.blocking} questions, plans and go-aheads that stopped work`, w.slow >= 3 ? "warn" : null)}
+    ${tile("Usual time to answer", fmtMs(w.p50), w.p90 == null ? "" : `slowest tenth over ${fmtMs(w.p90)}`, w.p90 == null ? null : w.p90 <= 15 * 60_000 ? "good" : "warn")}
+    ${tile("Main session's share", fmtPct(o.mainShare), `${fmtMoney(o.main)} main · ${fmtMoney(o.agents)} agents`, o.mainShare == null || o.agents === 0 ? null : o.mainShare <= 0.6 ? "good" : "warn")}
+    ${tile("Reviewers' catch rate", fmtPct(catchRate(rv)), `${rv.reduce((n, r) => n + r.changes, 0)} change requests in ${rv.reduce((n, r) => n + r.approved + r.changes, 0)} verdicts`)}
+  </div>`;
+  const sessions = o.sessions.length
+    ? `<div class="ltbl"><table><thead><tr><th>Session</th><th class="num">Main</th><th class="num">Agents</th><th class="num">Main's share</th></tr></thead><tbody>${o.sessions.map((s) => `<tr><td>${esc(s.title ?? s.session.slice(0, 8))}</td><td class="num">${fmtMoney(s.main)}</td><td class="num">${fmtMoney(s.agents)}</td><td class="num">${fmtPct(s.mainShare)}</td></tr>`).join("")}</tbody></table></div>`
+    : empty("No sessions started agents in this range.");
+  const reviews = rv.length
+    ? `<div class="ltbl"><table><thead><tr><th>Reviewer</th><th class="num">Runs</th><th class="num">Changes</th><th class="num">Catch rate</th><th class="num">Cost</th></tr></thead><tbody>${rv.map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.runs}</td><td class="num">${r.changes}</td><td class="num">${r.catchRate == null ? pill("unknown", "no verdict") : fmtPct(r.catchRate)}</td><td class="num" title="${r.costPerCatch == null ? "" : `${fmtMoney(r.costPerCatch)} per change request`}">${fmtMoney(r.cost)}</td></tr>`).join("")}</tbody></table></div>`
+    : empty("No review agents ran in this range.");
+  return `${tiles}<div class="grid2">
+    ${section("What the session you talk to costs next to its agents", "Main session and agents", sessions, "The main session plans, hands out work and reads results back; its context grows with every agent report. A high share means work agents could do on a cheaper model stays in the main thread.")}
+    ${section("How often each reviewer finds something", "Reviewers", reviews, "Catch rate: change requests among verdicts; hover a cost for what each change request cost. A reviewer with no verdict line can't be counted; one that never asks for changes may not be worth its cost.")}
+  </div>`;
+}
+
+const catchRate = (rv) => {
+  const verdicts = rv.reduce((n, r) => n + r.approved + r.changes, 0);
+  return verdicts ? rv.reduce((n, r) => n + r.changes, 0) / verdicts : null;
+};
+
 export function renderAI(q, tasks) {
   if (!q) return empty("Waiting for the first numbers…");
   const r = q.rework;
@@ -201,6 +254,7 @@ export function renderAI(q, tasks) {
     ${tile("Pull requests", fmtNum(p.prs), "opened or worked on in sessions")}
     ${tile("Tool calls failing", fmtPct(p.toolErrorRate, 1), `${fmtNum(p.toolCalls)} calls`, p.toolErrorRate == null ? null : p.toolErrorRate <= 0.05 ? "good" : "warn")}
   </div>
+  ${renderFlow(q)}
   ${e.heavySessions.length ? section("Sessions carrying the most context", "Heavy sessions", `<div class="ltbl"><table><thead><tr><th>Session</th><th class="num">Replies</th><th class="num">Context per reply</th><th class="num">Re-reading cost</th><th class="num">All cost</th><th>Last active</th></tr></thead><tbody>${e.heavySessions.map((s) => `<tr><td class="mono">${esc(s.session.slice(0, 8))}</td><td class="num">${fmtNum(s.replies)}</td><td class="num">${fmtNum(s.contextPerReply)}</td><td class="num">${fmtMoney(s.cacheReadCost)}</td><td class="num">${fmtMoney(s.cost)}</td><td>${esc(fmtDate(s.lastAt))}</td></tr>`).join("")}</tbody></table></div>`, "Every reply re-reads the whole conversation, even from cache. Over 200k tokens a reply, handing separable work to a new session or compacting between features costs less and answers faster.") : ""}
   ${section("Commits per week", "How much Claude writes", `${legend([{ label: "Claude co-authored", color: "var(--s7)" }, { label: "other", color: "var(--s1)" }])}<div class="chart">${stackedBars(weeks, ["ai", "other"], { label: "Commits per week", color: (k) => (k === "ai" ? "var(--s7)" : "var(--s1)"), keyLabel: (k) => (k === "ai" ? "Claude co-authored" : "other") })}</div>`, "A commit counts as Claude's when it carries a <code>Co-Authored-By: Claude</code> trailer or Claude Code's footer. Redone lines: lines later commits removed from the same file within 14 days, at most the lines added (an estimate).")}
   ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;

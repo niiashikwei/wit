@@ -281,7 +281,7 @@ test("a store file is private, kept across opens, and rebuilt when its tables ar
   process.chdir(dir("uri"));
   try {
     const mem = openStore("file:morpheus?mode=memory");
-    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 4);
+    assert.equal(mem.prepare("pragma user_version").get()!.user_version, 5);
     assert.equal(existsSync("file:morpheus?mode=memory"), false);
   } finally {
     process.chdir(cwd);

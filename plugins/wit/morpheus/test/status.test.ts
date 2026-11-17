@@ -34,7 +34,7 @@ test("session titles, background work, its notices and the questions Claude asks
   assert.deepEqual(parseTranscriptLine(JSON.stringify({ type: "custom-title", customTitle: "x", sessionId: "s1" }), { agent: "a" }).titles, [], "an agent's file names no session");
 
   const bash = parseTranscriptLine(JSON.stringify(call(NOW, "t1", "Bash", { command: "bash scripts/ship.sh merge a b", description: "Merge the batch", run_in_background: true })));
-  assert.deepEqual(bash.bg, [{ toolUseId: "t1", session: "s1", at: NOW, kind: "command", label: "Merge the batch" }]);
+  assert.deepEqual(bash.bg, [{ toolUseId: "t1", session: "s1", at: NOW, kind: "command", label: "Merge the batch", command: "bash scripts/ship.sh merge a b" }]);
   assert.deepEqual(parseTranscriptLine(JSON.stringify(call(NOW, "t2", "Bash", { command: "ls" }))).bg, [], "a command in the foreground");
   assert.equal(parseTranscriptLine(JSON.stringify(call(NOW, "t3", "Agent", { prompt: "watch CI", subagent_type: "ci-watcher", run_in_background: true }))).bg![0]!.kind, "agent");
   assert.equal(parseTranscriptLine(JSON.stringify(call(NOW, "t4", "Monitor", { command: "tail -F x", description: "suite steps" }))).bg![0]!.label, "suite steps");
