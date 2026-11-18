@@ -17,7 +17,11 @@ claude plugin marketplace add niiashikwei/wit
 claude plugin install wit@wit
 ```
 
-Restart Claude Code afterwards. For a team, you can add the marketplace and plugin to a project's `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`) so everyone who opens the project is offered it.
+Restart Claude Code afterwards.
+
+**Updates.** Once a day Wit checks for a newer version, and the next session tells you when one is out. Run `/wit:update` to install it (then restart), or `/wit:update auto` to have Wit update itself in the background whenever a new version is out. Wit has no network code of its own: the check asks Claude Code to refresh Wit's marketplace (`claude plugin marketplace update wit`) and reads the version from that copy. Turn checking off with `"update": {"check": false}` in `~/.claude/wit/tuning.json` or `WIT_UPDATE_CHECK=off`.
+
+For a team, you can add the marketplace and plugin to a project's `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`) so everyone who opens the project is offered it.
 
 Optional statusline (model · context % · cache hit % · tokens saved · cost): clone this repo, then add to `~/.claude/settings.json`:
 ```json
@@ -38,6 +42,7 @@ Optional statusline (model · context % · cache hit % · tokens saved · cost):
 | `api-cost-review` skill | Caching / batch / routing / output review for Claude API code | On demand |
 | `morpheus` MCP server | Read-only tools over this project's hooks, skills, agents and tokens | On demand |
 | `/wit:dashboard`, `/wit:process-report` | The Morpheus dashboard in your browser; a text summary with top improvements | On demand |
+| `/wit:update` | Check for a newer Wit and install it; `/wit:update auto` keeps it up to date on its own | On demand; checked daily |
 | `process-review` skill | Answers "how is my Claude Code setup working?" from Morpheus's tools | On demand |
 
 Hook overhead is about 30ms per call, measured.
@@ -183,7 +188,7 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 ## Privacy
 
 **Token optimizer** (R6–R8):
-- Metrics are **local only** (`~/.claude/wit/`) and nothing is sent over the network.
+- Metrics are **local only** (`~/.claude/wit/`) and nothing is sent over the network. The daily update check sends nothing about you: it asks Claude Code to refresh Wit's marketplace, as `claude plugin marketplace update` does.
 - What's recorded: counts, byte sizes, token totals, tool names, file extensions, and command families from a fixed allowlist (`pytest`, `npm test`… anything else is `other`).
 - Paths, sessions and projects are stored as **salted hashes**. The salt is random per machine, so hashes can't be matched elsewhere.
 - **Never recorded:** prompts, file contents, paths, full commands, tool outputs.
@@ -200,13 +205,15 @@ That turns on per-rule tables (blocks, warnings, overrides, worked-around rate).
 |---|---|
 | `WIT_GUARD=off\|warn\|nudge` (env) | Override the guard mode for a shell |
 | `WIT_METRICS=off` (env) | Record nothing |
+| `WIT_UPDATE_CHECK=off` (env), `"update": {"check": false}` in `tuning.json` | No daily update check |
+| `WIT_AUTO_UPDATE=on\|off` (env), `/wit:update auto` | Update Wit on its own when a new version is out |
 | `"pinned": true` in `tuning.json` | Freeze auto-tuning; the tuner only proposes |
 | `rm -rf ~/.claude/wit` | Forget the token optimizer's data |
 | `MORPHEUS_HOME`, `MORPHEUS_PROJECT` (env) | Where Morpheus keeps its store; which project it watches |
 
 ## Testing
 
-Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R69). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
+Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R72). Every test is tagged with the requirements it verifies, and the build fails if any requirement is untested.
 
 | Suite | Covers |
 |---|---|
@@ -217,6 +224,7 @@ Requirements live in [REQUIREMENTS.md](REQUIREMENTS.md) (R1–R69). Every test i
 | `test_robustness.py` | Malformed input, unwritable or corrupt data, unreadable files (R17) |
 | `test_performance.py` | Hook latency p50/p95, huge files, full-history tuning (R19–R20) |
 | `test_packaging.py` | Manifests, hook wiring, agent/skill frontmatter, Morpheus MCP wiring (R21, R34) |
+| `test_update.py` | The daily update check, the session-start notice, `/wit:update` and automatic updates (R70–R72) |
 | `plugins/wit/morpheus/test/` | Morpheus ingest, metrics, improvements, tokens, MCP, privacy, init, CLI, server (R23–R34), and the SDLC collectors, metrics and dashboard views (R35–R45), long-running and orchestrating sessions, the Status tab, how work flows and what the DFH audit corrected (R46–R69), tagged `// @req` |
 | `test_traceability.py` | Every requirement has a test; every Morpheus test is tagged |
 

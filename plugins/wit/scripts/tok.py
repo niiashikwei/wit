@@ -192,6 +192,14 @@ def session_start(inp, t):
     if sv.get("last_30d"):
         msg = (f"Wit: saved ~{fmt_tokens(sv.get('last_session', 0))} tokens last session, "
                f"~{fmt_tokens(sv['last_30d'])} over the last 30 days ({sv.get('sessions', 0)} sessions).")
+    try:
+        import update  # sibling script: a newer Wit, and the automatic update when it's on
+        note, line = update.notice()
+    except Exception:  # pragma: no cover - a broken update script never breaks the session
+        note, line = None, None
+    if line:
+        lines.append(line)
+    msg = "\n".join(m for m in (msg, note) if m) or None
     emit("SessionStart", system_message=msg, additionalContext="\n".join(lines))
 
 

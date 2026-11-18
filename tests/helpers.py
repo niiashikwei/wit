@@ -17,6 +17,7 @@ TUNER = os.path.join(PLUGIN, "scripts", "tuner.py")
 STATUSLINE = os.path.join(PLUGIN, "scripts", "statusline.py")
 AUDIT = os.path.join(PLUGIN, "skills", "token-audit", "scripts", "audit.py")
 REPORT = os.path.join(PLUGIN, "skills", "token-audit", "scripts", "report.py")
+UPDATE = os.path.join(PLUGIN, "scripts", "update.py")
 
 
 def req(*ids):
@@ -40,6 +41,8 @@ class WitTestCase(unittest.TestCase):
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("WIT_") or k == "WIT_COVERAGE"}
         self.env["WIT_HOME"] = self.home
         self.env["HOME"] = tempfile.mkdtemp(prefix="wit-userhome-")  # isolate ~/.claude.json
+        self.env["CLAUDE_CONFIG_DIR"] = os.path.join(self.env["HOME"], ".claude")  # no real marketplaces
+        self.env["WIT_UPDATE_CHECK"] = "off"  # update tests turn it back on
         self.big = self.make_file("secret_customer_file.py", 3000)
         self.small = self.make_file("small.py", 1)
 
