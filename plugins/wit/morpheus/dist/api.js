@@ -33,6 +33,7 @@ import { allTests, discover,                                latestCoverage, pyra
 import {                tasksReport } from "./tasks.js";
 import { diskSample, resources, sample } from "./resources.js";
 import { contextBySession, quality } from "./quality.js";
+import { levers } from "./levers.js";
 import { status } from "./status.js";
 import { localPipeline, reviewers, waitedOnYou } from "./flow.js";
 import { health } from "./health.js";
@@ -193,6 +194,7 @@ export function improvements(p         , now        ) {
     waiting: waitedOnYou(db, since("7d", now), now),
     pipeline: localPipeline(db, since("7d", now), now),
     reviewers: reviewers(db, since("7d", now), now),
+    levers: levers(db, since("7d", now), now),
     lastActivity: last,
     timingSince: o.kpis.timingSince,
   });
@@ -384,7 +386,7 @@ export const TOOLS         = [
   {
     name: "morpheus_quality",
     description:
-      "Whether AI help pays off and code stays healthy: AI co-authored share, AI lines redone within 14 days, tokens and cost per commit and line, cache hits, corrections, denials, compactions, tool errors, test-to-code ratio, churn hotspots and coverage of changed code.",
+      "Whether AI help pays off and code stays healthy: AI co-authored share, AI lines redone within 14 days, tokens and cost per commit and line, cache hits, cost levers (context size bands, CI watching, hooks on every call), corrections, denials, compactions, tool errors, test-to-code ratio, churn hotspots and coverage of changed code.",
     inputSchema: { type: "object", properties: { range: scopeProps.range, project: scopeProps.project } },
     run: (p, input, now) => {
       const s = scopeOf(input);

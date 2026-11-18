@@ -12,6 +12,7 @@ import { type Range, since } from "./metrics.ts";
 import { HEAVY_CONTEXT } from "./improvements.ts";
 import { latestCoverage } from "./pyramid.ts";
 import { orchestration, reviewers, waitedOnYou } from "./flow.ts";
+import { levers } from "./levers.ts";
 
 const DAY = 86_400_000;
 export const REWORK_WINDOW = 14 * DAY;
@@ -242,6 +243,7 @@ export function quality(db: DatabaseSync, root: string, range: Range, now: numbe
       prs,
     },
     waiting: waitedOnYou(db, from, now),
+    levers: levers(db, from, now),
     orchestration: orchestration(db, from, now),
     reviewers: reviewers(db, from, now),
     tests: { all: testLines(files), ai: testLines(files.filter((f) => f.ai)) },

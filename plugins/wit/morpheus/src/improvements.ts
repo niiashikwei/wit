@@ -74,6 +74,12 @@ export interface Inputs {
   pipeline?: { steps: { step: string; label: string | null; runs: number; failed: number; lostMs: number }[] };
   /** Review agents' catch rates (flow.ts, reviewers). */
   reviewers?: { name: string; runs: number; approved: number; changes: number; cost: number }[];
+  /** Cost levers (levers.ts): context bands, CI watching, hooks on every call. */
+  levers?: {
+    context: { replies: number; heavyReplies: number; overCap: number; overCapShare: number | null };
+    ci: { calls: number; cost: number; perCall: number | null; contextPerCall: number | null; kinds: { kind: string; calls: number; cost: number }[] };
+    hooks: { name: string; event: string | null; runs: number; p50: number; lostMs: number; hot: boolean }[];
+  };
   /** When the last session was active, to tell a silent hook from a quiet day. */
   lastActivity: number | null;
   /** When any hook began timing every run; before it, quiet hooks may just not have printed. */
@@ -110,10 +116,26 @@ export function rank(x: Inputs): Improvement[] {
   const inProject = (kind: string, name: string) =>
     (x.defined.where?.[`${kind}:${name}`] ?? "project") === "project";
 
+  // A hook on every tool call or prompt adds its time to all of them: value it by the whole wait.
+  const hot = new Map((x.levers?.hooks ?? []).filter((h) => h.hot).map((h) => [h.name, h]));
+  for (const h of hot.values())
+    out.push(
+      make({
+        id: `hot-hook-${h.name}`,
+        title: `Cut the time ${h.name} adds to every call`,
+        evidence: `It runs on ${h.event} and adds ${secs(h.p50)} to each of ${h.runs} calls (p50): ${(h.lostMs / 3_600_000).toFixed(1)} h of waiting above what a fast hook takes.`,
+        how: "Exit at the top when the call can't matter to it (match on the tool input first), replace jq, git and node subprocesses with one process, and narrow its matcher so it runs on fewer calls.",
+        area: "hook",
+        minutesPerWeek: perWeek(h.lostMs) / 60_000,
+        risk: 0,
+        effortHours: 2,
+        link: { kind: "hook", name: h.name },
+      }),
+    );
   for (const h of x.hooks) {
     const event = h.event ?? x.defined.hookEvents?.[h.name] ?? null;
     const budget = event ? HOOK_BUDGET_MS[event] : undefined;
-    if (budget && h.p95 != null && h.p95 > budget && h.runs >= 5)
+    if (budget && h.p95 != null && h.p95 > budget && h.runs >= 5 && !hot.has(h.name))
       out.push(
         make({
           id: `slow-hook-${h.name}`,
@@ -223,12 +245,35 @@ export function rank(x: Inputs): Improvement[] {
       make({
         id: "heavy-context",
         title: heavy.length > 1 ? `Start fresh sessions sooner (${heavy.length} sessions over ${k(HEAVY_CONTEXT)} a reply)` : "Start fresh sessions sooner",
-        evidence: `Session ${top.session.slice(0, 8)} re-reads ${k(top.contextPerReply)} tokens on each of ${top.replies} replies: $${top.cacheReadCost.toFixed(0)} of cache reads.`,
+        evidence:
+          `Session ${top.session.slice(0, 8)} re-reads ${k(top.contextPerReply)} tokens on each of ${top.replies} replies: $${top.cacheReadCost.toFixed(0)} of cache reads.` +
+          (x.levers?.context.overCap
+            ? ` Context above ${k(HEAVY_CONTEXT)} cost $${x.levers.context.overCap.toFixed(0)}${x.levers.context.overCapShare != null ? ` (${Math.round(100 * x.levers.context.overCapShare)}% of the main sessions' bill)` : ""}.`
+            : ""),
         how: "Hand finished or separable work to a new session (it starts small), keep a short status file the next session reads, and compact or clear between features instead of carrying everything.",
         area: "tokens",
         // Each extra 100k tokens of context adds about a second to every reply.
         minutesPerWeek: (perWeek(replies) * (extra / 100_000)) / 60,
         risk: 1,
+        effortHours: 0.5,
+        link: null,
+      }),
+    );
+  }
+
+  // Polling CI and PRs from the main session: each check is a reply that re-reads the whole context.
+  const ci = x.levers?.ci;
+  if (ci && ci.calls >= 20 && ci.cost >= 5) {
+    const top = ci.kinds.slice(0, 3).map((c) => `${c.kind} ${c.calls}`).join(", ");
+    out.push(
+      make({
+        id: "watch-ci",
+        title: "Let a cheap watcher follow CI and PRs",
+        evidence: `${ci.calls} main-session calls checked on CI or PRs (${top}); each re-read about ${k(ci.contextPerCall ?? 0)} tokens, $${ci.cost.toFixed(0)} in all ($${(ci.perCall ?? 0).toFixed(2)} a check).`,
+        how: "Wait with one background command that exits when the run finishes (gh run watch, or a Monitor on it) instead of checking in from the main thread, or hand the watch to a Haiku agent that reports back once; turn on the app's CI notifications.",
+        area: "tokens",
+        minutesPerWeek: (perWeek(ci.calls) * ((ci.contextPerCall ?? 0) / 100_000)) / 60,
+        risk: 0,
         effortHours: 0.5,
         link: null,
       }),

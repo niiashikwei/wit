@@ -225,6 +225,30 @@ const catchRate = (rv) => {
   return verdicts ? rv.reduce((n, r) => n + r.changes, 0) / verdicts : null;
 };
 
+const bandLabel = (b) => (b.max == null ? `over ${fmtNum(b.min)}` : `${fmtNum(b.min)}–${fmtNum(b.max)}`);
+
+/** Where the main session's money and time go in ways a change of habit can cut. */
+export function renderLevers(l) {
+  if (!l || !l.context.replies) return "";
+  const c = l.context;
+  const ci = l.ci;
+  const hot = l.hooks.filter((h) => h.hot);
+  const tiles = `<div class="kpis">
+    ${tile("Context over 200k", fmtMoney(c.overCap), `${fmtPct(c.overCapShare)} of the main sessions' bill · ${fmtPct(c.heavyShare)} of replies`, c.overCapShare <= 0.15 ? "good" : c.overCapShare <= 0.35 ? "warn" : "bad")}
+    ${tile("Watching CI and PRs", fmtMoney(ci.cost), `${fmtNum(ci.calls)} checks from the main session · ${fmtMoney(ci.perCall)} each`, ci.cost <= 5 ? "good" : ci.cost <= 50 ? "warn" : "bad")}
+    ${tile("Hooks on every call", fmtMs(hot.reduce((s, h) => s + h.lostMs, 0)), hot.length ? `added by ${hot.map((h) => h.name).join(", ")}` : "no slow hook runs on every call", hot.length ? "warn" : "good")}
+  </div>`;
+  const bands = hbars(c.bands.filter((b) => b.replies).map((b) => ({ label: `${bandLabel(b)} tokens`, value: b.cost, sub: `${fmtMoney(b.cost)} · ${fmtNum(b.replies)} replies` })), { fmt: fmtMoney, colorIndex: 0 });
+  const kinds = ci.kinds.length ? `<h3 class="sub">Checks on CI and PRs, by kind</h3>${hbars(ci.kinds.map((k) => ({ label: k.kind, value: k.cost, sub: `${fmtMoney(k.cost)} · ${fmtNum(k.calls)} checks` })), { fmt: fmtMoney, colorIndex: 2 })}` : "";
+  const hooks = l.hooks.length ? `<h3 class="sub">Hooks that run most, by time added</h3><div class="ltbl"><table><thead><tr><th>Hook</th><th>Event</th><th class="num">Runs</th><th class="num">p50</th><th class="num">Added in all</th></tr></thead><tbody>${l.hooks.map((h) => `<tr><td>${esc(h.name)}${h.hot ? " · every call" : ""}</td><td>${esc(h.event ?? "–")}</td><td class="num">${fmtNum(h.runs)}</td><td class="num">${fmtMs(h.p50)}</td><td class="num">${fmtMs(h.lostMs)}</td></tr>`).join("")}</tbody></table></div>` : "";
+  return section(
+    "What would cut the bill and the waiting",
+    "Cost levers",
+    `${tiles}<h3 class="sub">Main-session cost by context carried per reply</h3>${bands}${kinds}${hooks}`,
+    "Every reply re-reads the whole conversation from cache, so a reply at 800k tokens costs four times one at 200k. “Context over 200k” is the cache reads above that line: what starting fresh or compacting sooner would have saved. A check on CI from the main session is one more such reply; a background watcher reports once. Hook time is what each run took over 100 ms, about what a fast hook takes.",
+  );
+}
+
 export function renderAI(q, tasks) {
   if (!q) return empty("Waiting for the first numbers…");
   const r = q.rework;
@@ -256,6 +280,7 @@ export function renderAI(q, tasks) {
     ${tile("Tool calls failing", fmtPct(p.toolErrorRate, 1), `${fmtNum(p.toolCalls)} calls`, p.toolErrorRate == null ? null : p.toolErrorRate <= 0.05 ? "good" : "warn")}
   </div>
   ${renderFlow(q)}
+  ${renderLevers(q.levers)}
   ${e.heavySessions.length ? section("Sessions carrying the most context", "Heavy sessions", `<div class="ltbl"><table><thead><tr><th>Session</th><th class="num">Replies</th><th class="num">Context per reply</th><th class="num">Re-reading cost</th><th class="num">All cost</th><th>Last active</th></tr></thead><tbody>${e.heavySessions.map((s) => `<tr><td class="mono">${esc(s.session.slice(0, 8))}</td><td class="num">${fmtNum(s.replies)}</td><td class="num">${fmtNum(s.contextPerReply)}</td><td class="num">${fmtMoney(s.cacheReadCost)}</td><td class="num">${fmtMoney(s.cost)}</td><td>${esc(fmtDate(s.lastAt))}</td></tr>`).join("")}</tbody></table></div>`, "Every reply re-reads the whole conversation, even from cache. Over 200k tokens a reply, handing separable work to a new session or compacting between features costs less and answers faster.") : ""}
   ${section("Commits per week", "How much Claude writes", `${legend([{ label: "Claude co-authored", color: "var(--s7)" }, { label: "other", color: "var(--s1)" }])}<div class="chart">${stackedBars(weeks, ["ai", "other"], { label: "Commits per week", color: (k) => (k === "ai" ? "var(--s7)" : "var(--s1)"), keyLabel: (k) => (k === "ai" ? "Claude co-authored" : "other") })}</div>`, "A commit counts as Claude's when it carries a <code>Co-Authored-By: Claude</code> trailer or Claude Code's footer. Redone lines: lines later commits removed from the same file within 14 days, at most the lines added (an estimate).")}
   ${section("Which kinds of work cost the most, and get corrected most", "By task category", cats.length ? `<div class="ltbl"><table><thead><tr><th>Category</th><th class="num">Tasks</th><th class="num">Tokens each</th><th class="num">Cost each</th><th class="num">Time each</th><th class="num">Corrected</th><th class="num">Tool errors</th></tr></thead><tbody>${cats.map((c) => `<tr><td><span class="tag" style="border-left:3px solid ${categoryColor(c.category)}">${esc(c.category)}</span></td><td class="num">${c.tasks}</td><td class="num">${fmtNum(c.tokensNew / c.tasks)}</td><td class="num">${fmtMoney(c.cost / c.tasks)}</td><td class="num">${fmtMs(c.durationMs / c.tasks)}</td><td class="num">${fmtPct(c.corrected / c.tasks)}</td><td class="num">${fmtPct(c.toolCalls ? c.toolErrors / c.toolCalls : null)}</td></tr>`).join("")}</tbody></table></div>` : empty("No tasks in this range."))}`;

@@ -79,11 +79,12 @@ Risk runs from 0 to 3: how much the problem lets slip through. The rules cover t
 
 | Area | Rules |
 |---|---|
-| Hooks | Slow against the event budget; timing out or failing; a hook wired but silent for a day while sessions ran. |
+| Hooks | Slow against the event budget; adding 250 ms or more to every tool call or prompt (valued at the whole time added); timing out or failing; a hook wired but silent for a day while sessions ran. |
 | Rules | Blocks mostly worked around; repeated overrides. |
 | Skills | Hints mostly ignored; skills never loaded (project-defined only); heavy skills loaded often. |
 | Agents | Costly agents (over 150k new tokens a run); agents whose own tokens are over 40% orchestration; review agents that never give a verdict; project agents never run. |
 | Tools and hooks | Tools that fail 25% of the time or more; hooks that add over 50k tokens of output a week. |
+| Tokens | Sessions over 200k tokens of context a reply, with the cache reads above that line; the main session checking on CI and PRs (20 or more checks costing $5 or more). |
 | Setup | Hook timing switched off while hooks are wired. |
 
 ## SDLC sources and definitions
