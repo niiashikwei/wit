@@ -111,7 +111,7 @@ Risk runs from 0 to 3: how much the problem lets slip through. The rules cover t
 - **Coverage per node:** a layer's own report when one is tagged with it; for a module, file or class, the files its tests target by name (`test_cart.py` → `cart.py`, `cart.test.ts` → `cart.ts`), preferring a matching folder; for the whole suite, a layer or a feature, all the code measured. Each node says which it is.
 - **Flaky:** both passed and failed in the last 30 days of results.
 - **Task:** a prompt to the next prompt in the same session, with its agents. Category from the prompt's words, else from what it touched. **Corrected:** the next prompt pushes back ("no", "undo", "actually", an interrupt).
-- **Cost:** Anthropic's list prices per million tokens by model (cache writes 1.25× input, cache reads at the model's read price); an estimate.
+- **Cost:** Anthropic's list prices per million tokens by model (cache writes 1.25× input, or 2× for writes to the 1-hour cache, cache reads at the model's read price); an estimate.
 - **Rework:** for each commit's added lines in a code file, the lines later commits deleted from that file within 14 days, at most the lines added.
 - **Hotspots:** code files ranked by commits × churn in range, with their size now.
 

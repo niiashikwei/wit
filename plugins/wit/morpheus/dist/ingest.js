@@ -129,8 +129,8 @@ export function apply(db              , p        , agentId         , file       
       continue;
     }
     stmt(db, 
-      `insert into usage (session, message_id, agent_id, file, branch, at, model, tokens_in, tokens_out, tokens_cached, tokens_write, work, orchestration, text)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert into usage (session, message_id, agent_id, file, branch, at, model, tokens_in, tokens_out, tokens_cached, tokens_write, tokens_write_1h, work, orchestration, text)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       u.session,
       u.messageId,
@@ -143,6 +143,7 @@ export function apply(db              , p        , agentId         , file       
       u.tokensOut,
       u.tokensCached,
       u.tokensWrite ?? 0,
+      u.tokensWrite1h ?? 0,
       u.work,
       u.orchestration,
       u.text,

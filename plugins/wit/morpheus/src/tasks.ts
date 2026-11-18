@@ -77,7 +77,7 @@ export interface Task {
 }
 
 interface PromptRow { session: string; at: number; text: string }
-interface UsageRow { session: string; at: number; model: string | null; tokens_in: number; tokens_out: number; tokens_cached: number; tokens_write: number; work: number; orchestration: number }
+interface UsageRow { session: string; at: number; model: string | null; tokens_in: number; tokens_out: number; tokens_cached: number; tokens_write: number; tokens_write_1h: number; work: number; orchestration: number }
 interface RunRow { session: string; started_at: number; kind: string; name: string; trigger: string | null; outcome: string; duration_ms: number | null }
 
 /** The latest index in a sorted list of times at or before `t`. */
@@ -103,7 +103,7 @@ export function buildTasks(db: DatabaseSync, scope: Scope, now: number): Task[] 
     .all(from, ...sessionArgs) as unknown as PromptRow[];
   if (!prompts.length) return [];
   const usage = db
-    .prepare(`select session, at, model, tokens_in, tokens_out, tokens_cached, tokens_write, work, orchestration from usage where at >= ? ${sessionSql} ${scope.branch ? "and branch = ?" : ""}`)
+    .prepare(`select session, at, model, tokens_in, tokens_out, tokens_cached, tokens_write, tokens_write_1h, work, orchestration from usage where at >= ? ${sessionSql} ${scope.branch ? "and branch = ?" : ""}`)
     .all(from, ...sessionArgs, ...(scope.branch ? [scope.branch] : [])) as unknown as UsageRow[];
   const runs = db
     .prepare(`select session, started_at, kind, name, trigger, outcome, duration_ms from runs where started_at >= ? and kind in ('tool', 'skill', 'agent') ${sessionSql}`)
@@ -139,7 +139,7 @@ export function buildTasks(db: DatabaseSync, scope: Scope, now: number): Task[] 
     task.tokensOut += u.tokens_out;
     task.tokensCached += u.tokens_cached;
     task.tokensNew += fresh;
-    task.cost += costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write });
+    task.cost += costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write, tokensWrite1h: u.tokens_write_1h });
     const calls = u.work + u.orchestration;
     if (calls) {
       const w = Math.round((fresh * u.work) / calls);
@@ -201,10 +201,10 @@ export function tasksReport(db: DatabaseSync, scope: Scope, now: number, opts: {
   }
   // Models from every reply in range, so replies outside any task (resumed sessions) still count.
   const from = since(scope.range, now);
-  for (const u of db.prepare("select model, tokens_in, tokens_out, tokens_cached, tokens_write from usage where at >= ?").all(from) as unknown as UsageRow[]) {
+  for (const u of db.prepare("select model, tokens_in, tokens_out, tokens_cached, tokens_write, tokens_write_1h from usage where at >= ?").all(from) as unknown as UsageRow[]) {
     const m = models.get(u.model ?? "unknown") ?? { model: u.model ?? "unknown", tokensNew: 0, cost: 0 };
     m.tokensNew += u.tokens_in + u.tokens_out;
-    m.cost += costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write });
+    m.cost += costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write, tokensWrite1h: u.tokens_write_1h });
     models.set(m.model, m);
   }
   // Cost by git branch: every reply records the branch it ran on, so feature work is costed whole,
@@ -212,16 +212,16 @@ export function tasksReport(db: DatabaseSync, scope: Scope, now: number, opts: {
   const branches = (db
     .prepare(
       `select coalesce(branch, '') as branch, model, count(*) as replies, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached,
-         sum(tokens_write) as tw, max(at) as last_at
+         sum(tokens_write) as tw, sum(tokens_write_1h) as tw1h, max(at) as last_at
          from usage where at >= ? and at <= ? group by coalesce(branch, ''), model`,
     )
-    .all(from, now) as { branch: string; model: string | null; replies: number; tin: number; tout: number; cached: number; tw: number; last_at: number }[])
+    .all(from, now) as { branch: string; model: string | null; replies: number; tin: number; tout: number; cached: number; tw: number; tw1h: number; last_at: number }[])
     .reduce((m, r) => {
       const b = m.get(r.branch) ?? { branch: r.branch || null, replies: 0, tokensNew: 0, tokensCached: 0, cost: 0, sessions: 0, lastAt: 0 };
       b.replies += r.replies;
       b.tokensNew += r.tin + r.tout;
       b.tokensCached += r.cached;
-      b.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+      b.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw, tokensWrite1h: r.tw1h });
       b.lastAt = Math.max(b.lastAt, r.last_at);
       return m.set(r.branch, b);
     }, new Map<string, { branch: string | null; replies: number; tokensNew: number; tokensCached: number; cost: number; sessions: number; lastAt: number }>());

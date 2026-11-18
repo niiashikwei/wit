@@ -29,7 +29,7 @@ create table if not exists usage (
   session text not null, message_id text not null, agent_id text, file text, branch text,
   at integer not null, model text, tokens_in integer not null default 0,
   tokens_out integer not null default 0, tokens_cached integer not null default 0,
-  tokens_write integer not null default 0, work integer not null default 0, orchestration integer not null default 0,
+  tokens_write integer not null default 0, tokens_write_1h integer not null default 0, work integer not null default 0, orchestration integer not null default 0,
   text integer not null default 0, primary key (session, message_id)
 );
 create index if not exists usage_at on usage (at);
@@ -117,7 +117,7 @@ create table if not exists disk_samples (
 `;
 
 /** Raise when the tables change: an older store is dropped and read again from the transcripts. */
-const VERSION = 6;
+const VERSION = 7;
 const TABLES = [
   "runs", "agents", "usage", "prompts", "events", "files", "marks", "meta", "prs", "session_titles", "session_costs", "bg", "notices", "asks", "commits",
   "commit_files", "deploys", "ci_runs", "incidents", "test_reports", "test_cases",

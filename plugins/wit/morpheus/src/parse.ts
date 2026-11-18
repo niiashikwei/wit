@@ -51,6 +51,8 @@ export interface Usage {
   tokensCached: number;
   /** Of tokensIn, the part written to the cache (priced higher than plain input). */
   tokensWrite?: number;
+  /** Of the cache writes, those to the 1-hour cache (priced higher). */
+  tokensWrite1h?: number;
   model: string | null;
   /** This line's tool calls that do the task, that coordinate, and its text blocks. */
   work: number;
@@ -498,6 +500,7 @@ export function parseTranscriptLine(line: string, opts: { agent?: string } = {})
         tokensOut: u.output_tokens ?? 0,
         tokensCached: u.cache_read_input_tokens ?? 0,
         tokensWrite: u.cache_creation_input_tokens ?? 0,
+        tokensWrite1h: Math.min(u.cache_creation?.ephemeral_1h_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0),
         model: row.message?.model ?? null,
         ...blocks,
       });

@@ -30,17 +30,17 @@ export function contextBySession(db              , from        , now        ) {
     .prepare(
       `select case when instr(session, '/agent-') > 0 then substr(session, 1, instr(session, '/agent-') - 1) else session end as s,
         model, count(*) as replies, sum(tokens_in) as tin, sum(tokens_cached) as cached, sum(tokens_out) as tout,
-        sum(tokens_write) as tw, max(at) as last_at
+        sum(tokens_write) as tw, sum(tokens_write_1h) as tw1h, max(at) as last_at
          from usage where at >= ? and at <= ? and coalesce(model, '') <> '<synthetic>' group by s, model`,
     )
-    .all(from, now)                                                                                                                                  ;
+    .all(from, now)                                                                                                                                                ;
   const by = new Map                                                                                                                    ();
   for (const r of rows) {
     const x = by.get(r.s) ?? { session: r.s, replies: 0, context: 0, cacheReadCost: 0, cost: 0, lastAt: 0 };
     x.replies += r.replies;
     x.context += r.tin + r.cached;
     x.cacheReadCost += (r.cached * (priceOf(r.model)?.cacheRead ?? 0)) / 1e6;
-    x.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+    x.cost += costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw, tokensWrite1h: r.tw1h });
     x.lastAt = Math.max(x.lastAt, r.last_at);
     by.set(r.s, x);
   }
@@ -115,8 +115,8 @@ export function generatedTest(root        )                            {
 
 /**
  * What Claude Code itself says the sessions active in the range cost, over their whole life, next
- * to Wit's estimate from token counts for the same sessions and their agents. Null when no session
- * recorded its cost.
+ * to Wit's estimate from token counts for the same sessions' main threads (Claude Code's total
+ * leaves out agents that keep their own transcript). Null when no session recorded its cost.
  */
 export function reportedCost(db              , from        , now        ) {
   const rows = db
@@ -124,13 +124,13 @@ export function reportedCost(db              , from        , now        ) {
     .all(from, now)                                       ;
   if (!rows.length) return null;
   const used = db.prepare(
-    `select model, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw
-       from usage where session = ? or session like ? || '/agent-%' group by model`,
+    `select model, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw, sum(tokens_write_1h) as tw1h
+       from usage where session = ? and agent_id is null group by model`,
   );
   let estimate = 0;
   for (const r of rows)
-    for (const u of used.all(r.session, r.session)                                                                                     )
-      estimate += costOf(u.model, { tokensIn: u.tin, tokensOut: u.tout, tokensCached: u.cached, tokensWrite: u.tw });
+    for (const u of used.all(r.session)                                                                                                   )
+      estimate += costOf(u.model, { tokensIn: u.tin, tokensOut: u.tout, tokensCached: u.cached, tokensWrite: u.tw, tokensWrite1h: u.tw1h });
   return { sessions: rows.length, cost: rows.reduce((s, r) => s + r.cost, 0), estimate };
 }
 
@@ -146,11 +146,11 @@ export function quality(db              , root        , range       , now       
   const generated = generatedTest(root);
   const files = allFiles.filter((f) => !generated(f.path));
   const reported = reportedCost(db, from, now);
-  const usage = db.prepare("select model, tokens_in, tokens_out, tokens_cached, tokens_write from usage where at >= ? and at <= ?").all(from, now)                                                                                                                  ;
+  const usage = db.prepare("select model, tokens_in, tokens_out, tokens_cached, tokens_write, tokens_write_1h from usage where at >= ? and at <= ?").all(from, now)                                                                                                                                           ;
   const tokensNew = usage.reduce((s, u) => s + u.tokens_in + u.tokens_out, 0);
   const tokensIn = usage.reduce((s, u) => s + u.tokens_in, 0);
   const cached = usage.reduce((s, u) => s + u.tokens_cached, 0);
-  const cost = usage.reduce((s, u) => s + costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write }), 0);
+  const cost = usage.reduce((s, u) => s + costOf(u.model, { tokensIn: u.tokens_in, tokensOut: u.tokens_out, tokensCached: u.tokens_cached, tokensWrite: u.tokens_write, tokensWrite1h: u.tokens_write_1h }), 0);
   const aiAdded = ai.reduce((s, c) => s + c.added, 0);
   const sessionsCtx = contextBySession(db, from, now);
   const replies = sessionsCtx.reduce((s, x) => s + x.replies, 0);

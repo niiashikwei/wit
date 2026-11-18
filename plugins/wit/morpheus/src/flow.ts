@@ -132,15 +132,15 @@ export function orchestration(db: DatabaseSync, from: number, now: number) {
   const rows = db
     .prepare(
       `select session, agent_id is not null or session like '%/agent-%' as agent, model,
-              sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw
+              sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw, sum(tokens_write_1h) as tw1h
          from usage where at >= ? and at <= ? group by session, agent, model`,
     )
-    .all(from, now) as { session: string; agent: number; model: string | null; tin: number; tout: number; cached: number; tw: number }[];
+    .all(from, now) as { session: string; agent: number; model: string | null; tin: number; tout: number; cached: number; tw: number; tw1h: number }[];
   const by = new Map<string, { session: string; main: number; agents: number }>();
   for (const r of rows) {
     const k = top(r.session);
     const s = by.get(k) ?? { session: k, main: 0, agents: 0 };
-    const c = costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+    const c = costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw, tokensWrite1h: r.tw1h });
     if (r.agent) s.agents += c;
     else s.main += c;
     by.set(k, s);
@@ -194,7 +194,7 @@ export function reviewers(db: DatabaseSync, from: number, now: number) {
 /** Everything the session cost in a range, for cost per deploy. */
 export function spend(db: DatabaseSync, from: number, now: number) {
   const rows = db
-    .prepare("select model, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw from usage where at >= ? and at <= ? group by model")
-    .all(from, now) as { model: string | null; tin: number; tout: number; cached: number; tw: number }[];
-  return rows.reduce((s, r) => s + costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw }), 0);
+    .prepare("select model, sum(tokens_in) as tin, sum(tokens_out) as tout, sum(tokens_cached) as cached, sum(tokens_write) as tw, sum(tokens_write_1h) as tw1h from usage where at >= ? and at <= ? group by model")
+    .all(from, now) as { model: string | null; tin: number; tout: number; cached: number; tw: number; tw1h: number }[];
+  return rows.reduce((s, r) => s + costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw, tokensWrite1h: r.tw1h }), 0);
 }

@@ -23,18 +23,18 @@ export const PER_CALL = new Set(["PreToolUse", "PostToolUse", "PermissionRequest
 
 const MAIN = "agent_id is null and session not like '%/agent-%'";
 
-                                                                                                                            
+                                                                                                                                          
 
 function mainReplies(db              , from        , now        )          {
   return db
     .prepare(
-      `select session, at, model, tokens_in as tin, tokens_out as tout, tokens_cached as cached, tokens_write as tw
+      `select session, at, model, tokens_in as tin, tokens_out as tout, tokens_cached as cached, tokens_write as tw, tokens_write_1h as tw1h
          from usage where ${MAIN} and at >= ? and at <= ? order by session, at`,
     )
     .all(from, now)                      ;
 }
 
-const replyCost = (r       ) => costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw });
+const replyCost = (r       ) => costOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, tokensCached: r.cached, tokensWrite: r.tw, tokensWrite1h: r.tw1h });
 const contextOf = (r       ) => r.tin + r.cached;
 
 /**

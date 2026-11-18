@@ -7,10 +7,13 @@ export interface Price {
   input: number;
   output: number;
   cacheRead: number;
+  /** A write to the 5-minute cache. */
   cacheWrite: number;
+  /** A write to the 1-hour cache, which Claude Code uses for most of its writes. */
+  cacheWrite1h: number;
 }
 
-const p = (input: number, output: number, cacheRead = input * 0.1): Price => ({ input, output, cacheRead, cacheWrite: input * 1.25 });
+const p = (input: number, output: number, cacheRead = input * 0.1): Price => ({ input, output, cacheRead, cacheWrite: input * 1.25, cacheWrite1h: input * 2 });
 
 /** Model id prefix → price; the first match wins, so more specific prefixes come first. */
 export const PRICES: [string, Price][] = [
@@ -55,11 +58,15 @@ export function priceOf(model: string | null | undefined): Price | null {
 
 /**
  * Dollars for one reply's tokens. `tokensIn` includes cache writes (`tokensWrite`), which are
- * priced at the write rate; cached reads at the read rate.
+ * priced at the write rate (`tokensWrite1h` of them at the 1-hour rate); cached reads at the read rate.
  */
-export function costOf(model: string | null | undefined, t: { tokensIn: number; tokensOut: number; tokensCached: number; tokensWrite?: number }): number {
+export function costOf(
+  model: string | null | undefined,
+  t: { tokensIn: number; tokensOut: number; tokensCached: number; tokensWrite?: number; tokensWrite1h?: number },
+): number {
   const price = priceOf(model);
   if (!price) return 0;
   const write = Math.min(t.tokensWrite ?? 0, t.tokensIn);
-  return ((t.tokensIn - write) * price.input + write * price.cacheWrite + t.tokensOut * price.output + t.tokensCached * price.cacheRead) / 1e6;
+  const long = Math.min(t.tokensWrite1h ?? 0, write);
+  return ((t.tokensIn - write) * price.input + (write - long) * price.cacheWrite + long * price.cacheWrite1h + t.tokensOut * price.output + t.tokensCached * price.cacheRead) / 1e6;
 }

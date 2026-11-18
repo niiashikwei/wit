@@ -173,6 +173,27 @@ export function diskSample(db              , root        , now        , dbFile  
 export const TEST_CMD = /\b(npm (run )?test|pnpm (run )?test|yarn test|bun test|pytest|python3? -m (pytest|unittest)|go test|cargo (test|nextest)|mvn (test|verify)|gradlew? test|jest|vitest|node --test|rspec|phpunit|dotnet test|mix test|make test|tox|playwright test|cypress run)\b/;
 export const BUILD_CMD = /\b(npm run build|pnpm (run )?build|yarn build|bun run build|tsc\b|cargo build|go build|mvn (package|install|compile)|gradlew? (build|assemble)|make(?! test)\b|vite build|webpack|next build|dotnet build|docker build|swift build|xcodebuild)\b/;
 
+/** Commands that read, search or edit text: a test name or path in their arguments is not a run. */
+const LOOKS = /^(sed|cat|grep|egrep|rg|echo|printf|awk|perl|tee|head|tail|less|ls|find|wc|diff|git|gh|jq|sort|uniq|cut|tr|touch|cp|mv|rm|mkdir|open)$/;
+
+/**
+ * Whether a shell line runs tests, a build, or neither. Heredoc bodies and quoted text are set aside
+ * (a sed expression or a file being written can mention `jest` or `tsc`), and so are commands that
+ * only read, search or edit text; each remaining command is checked on its own. Text quoted after
+ * `-c` is kept: `bash -c "npm test"` runs the tests.
+ */
+export function commandKind(command               )                          {
+  if (!command) return null;
+  const line = command
+    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\b/g, "")
+    .replace(/(-l?c\s+)(["'])([\s\S]*?)\2/g, "$1 $3 ")
+    .replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+  const segments = line.split(/\s*(?:&&|\|\||;|\||\n|\(|\))\s*/).map((s) => s.trim()).filter(Boolean);
+  const real = segments.filter((s) => !LOOKS.test(s.split(/\s+/)[0] .replace(/^.*\//, "")));
+  if (real.some((s) => TEST_CMD.test(s))) return "test";
+  return real.some((s) => BUILD_CMD.test(s)) ? "build" : null;
+}
+
 /** Points for a chart: at most `max`, averaging the samples that share a bucket. */
 export function bucket                          (rows     , from        , to        , max        , val                  ) {
   const size = Math.max(1, Math.ceil((to - from) / max));
@@ -202,7 +223,7 @@ export function resources(db              , range       , now        ) {
     return inside.length ? inside.reduce((m, v) => Math.max(m, v), 0) : null;
   };
   const cmdRuns = runs
-    .map((r) => ({ ...r, kind: r.trigger && TEST_CMD.test(r.trigger) ? "test" : r.trigger && BUILD_CMD.test(r.trigger) ? "build" : null }))
+    .map((r) => ({ ...r, kind: commandKind(r.trigger) }))
     .filter((r) => r.kind)
     .map((r) => ({ at: r.at, kind: r.kind                    , command: redact(r.trigger, 120), durationMs: r.duration_ms, outcome: r.outcome, peakRss: peakDuring(r.at, r.duration_ms) }));
   const kindSummary = (kind                  ) => {

@@ -51,6 +51,8 @@
                        
                                                                                      
                        
+                                                                        
+                         
                        
                                                                                        
                
@@ -498,6 +500,7 @@ export function parseTranscriptLine(line        , opts                     = {})
         tokensOut: u.output_tokens ?? 0,
         tokensCached: u.cache_read_input_tokens ?? 0,
         tokensWrite: u.cache_creation_input_tokens ?? 0,
+        tokensWrite1h: Math.min(u.cache_creation?.ephemeral_1h_input_tokens ?? 0, u.cache_creation_input_tokens ?? 0),
         model: row.message?.model ?? null,
         ...blocks,
       });

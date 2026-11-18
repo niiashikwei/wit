@@ -18,7 +18,7 @@ const NOW = Date.UTC(2026, 10, 12, 12);
 
 // @req R40
 test("cost uses each model's list price, with cache writes and reads priced apart", () => {
-  assert.deepEqual(priceOf("claude-opus-5-5"), { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 });
+  assert.deepEqual(priceOf("claude-opus-5-5"), { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5, cacheWrite1h: 8 });
   assert.equal(priceOf("claude-sonnet-4-6-20260101")!.input, 3);
   assert.equal(priceOf("us.anthropic.claude-haiku-4-5")!.input, 1);
   assert.equal(priceOf("claude-opus-next")!.input, 5, "unknown Opus: the family's price");
